@@ -56,8 +56,8 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
     (horse_id,date,venue,race_name,surface,distance,going,class_name,frame_no,horse_no,finish_position,popularity,odds,jockey,carried_weight,body_weight,body_weight_diff,passing_order,last_3f,time_text,time_seconds,margin,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertJockeyStat = db.prepare(`INSERT OR REPLACE INTO jockey_stats
-    (jockey,period_type,date_from,date_to,venue,surface,distance,starts,wins,seconds,thirds,win_rate,place2_rate,place3_rate,win_return_rate,place_return_rate,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (jockey,period_type,date_from,date_to,venue,surface,distance,starts,wins,seconds,thirds,fourths,fifths_or_worse,win_rate,place2_rate,place3_rate,win_return_rate,place_return_rate,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertCourseTrend = db.prepare(`INSERT INTO course_trends
     (venue,surface,distance,sample_from,sample_to,frame_no,running_style,starts,wins,seconds,thirds,win_rate,place3_rate,score,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -99,7 +99,37 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
 
     for (let i = 0; i < jockeys.length; i++) {
       for (const period of ['recent_1m','year','lifetime']) {
-        insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, i % 2 ? '東京' : '', i % 2 ? '芝' : '', i % 2 ? 1600 : null, 40+i*3, 6+i, 5, 4, Number(((6+i)/(40+i*3)*100).toFixed(1)), 25.0, 37.5, 90+i*5, 80+i*4, nowIso());
+        const baseStarts = period === 'recent_1m' ? 40+i*3 : period === 'year' ? 260+i*12 : 7200+i*80;
+        const wins = period === 'recent_1m' ? 6+i : period === 'year' ? 34+i*2 : 930+i*8;
+        const seconds = period === 'recent_1m' ? 5 : period === 'year' ? 28+i : 780+i*4;
+        const thirds = period === 'recent_1m' ? 4 : period === 'year' ? 24+i : 690+i*3;
+        const fourths = period === 'recent_1m' ? 3+i%3 : period === 'year' ? 20+i : 610+i*2;
+        const others = Math.max(0, baseStarts - wins - seconds - thirds - fourths);
+        insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, '', '', null, baseStarts, wins, seconds, thirds, fourths, others, Number((wins/baseStarts*100).toFixed(1)), Number(((wins+seconds)/baseStarts*100).toFixed(1)), Number(((wins+seconds+thirds)/baseStarts*100).toFixed(1)), 90+i*5, 80+i*4, nowIso());
+        for (const dist of [1200,1600,1800,2000]) {
+          const st = Math.max(8, Math.floor(baseStarts / (period==='lifetime'?18:8)) + (dist/400)%4 + i);
+          const w = Math.max(1, Math.floor(st * (0.10 + i*0.005 + (dist===1600?0.03:0))));
+          const s2 = Math.max(1, Math.floor(st * 0.10));
+          const t3 = Math.max(1, Math.floor(st * 0.09));
+          const f4 = Math.max(0, Math.floor(st * 0.08));
+          insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, '', '', dist, st, w, s2, t3, f4, Math.max(0, st-w-s2-t3-f4), Number((w/st*100).toFixed(1)), Number(((w+s2)/st*100).toFixed(1)), Number(((w+s2+t3)/st*100).toFixed(1)), 88+i*4, 77+i*3, nowIso());
+        }
+        for (const course of [{surface:'芝', distance:1600},{surface:'芝',distance:2000},{surface:'ダート',distance:1200},{surface:'ダート',distance:1800}]) {
+          const st = Math.max(10, Math.floor(baseStarts / (period==='lifetime'?22:10)) + i);
+          const w = Math.max(1, Math.floor(st * (course.surface==='芝'?0.14:0.11) + i%3));
+          const s2 = Math.max(1, Math.floor(st * 0.11));
+          const t3 = Math.max(1, Math.floor(st * 0.10));
+          const f4 = Math.max(0, Math.floor(st * 0.08));
+          insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, '', course.surface, course.distance, st, w, s2, t3, f4, Math.max(0, st-w-s2-t3-f4), Number((w/st*100).toFixed(1)), Number(((w+s2)/st*100).toFixed(1)), Number(((w+s2+t3)/st*100).toFixed(1)), 91+i*3, 82+i*2, nowIso());
+        }
+        for (const venue of ['東京','京都','函館']) {
+          const st = Math.max(12, Math.floor(baseStarts / (period==='lifetime'?20:9)) + i);
+          const w = Math.max(1, Math.floor(st * (venue==='東京'?0.15:0.11) + i%2));
+          const s2 = Math.max(1, Math.floor(st * 0.10));
+          const t3 = Math.max(1, Math.floor(st * 0.09));
+          const f4 = Math.max(0, Math.floor(st * 0.07));
+          insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, venue, '', null, st, w, s2, t3, f4, Math.max(0, st-w-s2-t3-f4), Number((w/st*100).toFixed(1)), Number(((w+s2)/st*100).toFixed(1)), Number(((w+s2+t3)/st*100).toFixed(1)), 93+i*2, 84+i*2, nowIso());
+        }
       }
     }
 

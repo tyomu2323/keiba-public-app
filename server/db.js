@@ -20,5 +20,7 @@ ensureColumn('entries', 'running_style', "TEXT DEFAULT ''");
 ensureColumn('biases', 'deep_closer', 'INTEGER DEFAULT 0');
 ensureColumn('watch_horses', 'alert_condition', "TEXT DEFAULT ''");
 ensureColumn('entries', 'manual_mark', "TEXT DEFAULT ''");
+ensureColumn('jockey_stats', 'fourths', 'INTEGER DEFAULT 0');
+ensureColumn('jockey_stats', 'fifths_or_worse', 'INTEGER DEFAULT 0');
 
 export function nowIso() { return new Date().toISOString(); }
