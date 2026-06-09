@@ -22,3 +22,20 @@ body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
 /* V11 detail modal usability */
 .modal-box.wide{position:relative;}
 .modal-box.wide .modal-close{position:sticky;top:0;float:right;z-index:50;box-shadow:0 4px 14px #0004;}
+
+/* V13: jockey stats split by surface */
+.surface-stat-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start}
+.surface-stat-wrap .jockey-stat-section{border:1px solid #e5e7eb;border-radius:14px;padding:12px;background:#ffffff}
+.surface-stat-wrap .jockey-stat-section:first-child h4{border-left-color:#16a34a;color:#166534}
+.surface-stat-wrap .jockey-stat-section:nth-child(2) h4{border-left-color:#92400e;color:#78350f}
+.stat-card.stat-courseDistance{min-height:96px}
+
+/* V13: horse detail navigation and past-run agari medals */
+.modal-nav{position:sticky;top:0;z-index:45;background:#fff;padding:8px 0;border-bottom:1px solid #eee;margin-bottom:12px}
+.modal-nav button{padding:8px 12px;margin:3px;background:#334155}
+#horse-basic,#horse-workouts,#horse-past-runs{scroll-margin-top:72px;margin-bottom:22px}
+.agari{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:4px 8px;font-weight:800;background:#f1f5f9;color:#111827;white-space:nowrap}
+.agari small{font-weight:700;color:inherit;opacity:.8}
+.agari-gold{background:#fde68a;color:#78350f;border:1px solid #f59e0b}
+.agari-silver{background:#e5e7eb;color:#374151;border:1px solid #9ca3af}
+.agari-bronze{background:#fed7aa;color:#7c2d12;border:1px solid #fb923c}

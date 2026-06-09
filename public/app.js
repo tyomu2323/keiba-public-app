@@ -9,20 +9,14 @@ function stars(n){return '★'.repeat(Number(n)||0)}
 function styleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
 function scoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
 
-const JRA_DISTANCES = [1000,1150,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2600,3000,3200,3400,3600];
-const JRA_SURFACES = ['芝','ダート'];
+const JRA_TURF_DISTANCES = [1000,1200,1400,1500,1600,1800,2000,2200,2400,2500,2600,3000,3200,3400,3600];
+const JRA_DIRT_DISTANCES = [1000,1150,1200,1300,1400,1600,1700,1800,1900,2000,2100,2400];
 const JRA_VENUES = ['札幌','函館','福島','新潟','東京','中山','中京','京都','阪神','小倉'];
 function emptyStat(base){return {starts:0,wins:0,seconds:0,thirds:0,fourths:0,fifths_or_worse:0,win_rate:0,place2_rate:0,place3_rate:0,win_return_rate:'-',place_return_rate:'-',...base}}
 function normalizeSurface(v){return String(v||'').replace('ダ','ダート')}
-function fillCourseDistances(rows){
+function fillSurfaceDistances(rows, surface, distances){
  const map=new Map(rows.map(s=>[`${normalizeSurface(s.surface)}:${Number(s.distance)}`,s]));
- const out=[];
- for(const d of JRA_DISTANCES){
-  for(const surface of JRA_SURFACES){
-   out.push(map.get(`${surface}:${d}`)||emptyStat({surface,distance:d}));
-  }
- }
- return out;
+ return distances.map(d=>map.get(`${surface}:${d}`)||emptyStat({surface,distance:d}));
 }
 function fillVenues(rows){const map=new Map(rows.map(s=>[s.venue,s]));return JRA_VENUES.map(v=>map.get(v)||emptyStat({venue:v}))}
 
@@ -41,7 +35,21 @@ function renderWatchAlerts(rows){
  if(active.length && !sessionStorage.getItem('watchPopupShown')){document.getElementById('watchModalBody').innerHTML=active.map(r=>`<p><b>${r.alert_condition||'注目'} ${r.horse_name}</b><br>${r.venue}${r.race_no}R ${r.race_name}<br>${r.note||''}</p>`).join('');document.getElementById('watchModal').classList.remove('hidden');sessionStorage.setItem('watchPopupShown','1');}
 }
 function closeWatchModal(){document.getElementById('watchModal').classList.add('hidden')}
-function closeDetailModal(){document.getElementById('detailModal').classList.add('hidden')}
+function openDetailModal(){
+ const modal=document.getElementById('detailModal');
+ const box=modal.querySelector('.modal-box');
+ modal.classList.remove('hidden');
+ if(box) box.scrollTop=0;
+}
+function closeDetailModal(){
+ document.getElementById('detailModal').classList.add('hidden');
+ window.scrollTo({top:0, behavior:'smooth'});
+}
+function scrollModalTo(id){
+ const el=document.getElementById(id);
+ if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
 function linkHorse(e){return `<button class="link-btn horse-link" onclick="showHorse('${e.horse_id}')">${e.name}</button>`}
 function linkJockey(name){return name?`<button class="link-btn jockey-link" onclick="showJockey('${encodeURIComponent(name)}')">${name}</button>`:''}
 function statLabel(t){return t==='recent_1m'?'直近1ヶ月':t==='year'?'本年度':t==='lifetime'?'通算':t}
@@ -79,9 +87,11 @@ function statSection(title, rows){
 }
 function periodPanel(period, rows){
  const overall=rows.filter(s=>statType(s)==='overall');
- const courseDistance=fillCourseDistances(rows.filter(s=>statType(s)==='courseDistance'));
+ const courseRows=rows.filter(s=>statType(s)==='courseDistance');
+ const turfRows=fillSurfaceDistances(courseRows,'芝',JRA_TURF_DISTANCES);
+ const dirtRows=fillSurfaceDistances(courseRows,'ダート',JRA_DIRT_DISTANCES);
  const venue=fillVenues(rows.filter(s=>statType(s)==='venue'));
- return `<div class="period-panel"><h3>${statLabel(period)} <span class="muted">1-2-3-4-5着以下</span></h3>${statSection('総合', overall)}${statSection('コース×距離別', courseDistance)}${statSection('開催場別', venue)}</div>`;
+ return `<div class="period-panel"><h3>${statLabel(period)} <span class="muted">1-2-3-4-5着以下</span></h3>${statSection('総合', overall)}<div class="surface-stat-wrap">${statSection('芝 距離別', turfRows)}${statSection('ダート 距離別', dirtRows)}</div>${statSection('開催場別', venue)}</div>`;
 }
 async function showJockey(encodedName){
  const j=await api('/api/jockeys/'+encodedName);
@@ -89,9 +99,28 @@ async function showJockey(encodedName){
  const byPeriod={recent_1m:[],year:[],lifetime:[]};
  for(const s of stats){ if(!byPeriod[s.period_type]) byPeriod[s.period_type]=[]; byPeriod[s.period_type].push(s); }
  detailModalBody.innerHTML=`<h2>騎手詳細：${j.jockey.name}</h2><p class="muted">表記：1着-2着-3着-4着-5着以下</p><div class="jockey-tabs">${periodPanel('recent_1m',byPeriod.recent_1m||[])}${periodPanel('year',byPeriod.year||[])}${periodPanel('lifetime',byPeriod.lifetime||[])}</div><h3>今週/直近騎乗</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>開催</th><th>R</th><th>馬</th><th>条件</th><th>脚質</th></tr></thead><tbody>${(j.recentRides||[]).map(r=>`<tr><td>${r.date}</td><td>${r.venue}</td><td>${r.race_no}R</td><td>${r.horse_name}</td><td>${r.surface}${r.distance}m</td><td>${styleBadge(r.running_style)}</td></tr>`).join('')}</tbody></table></div>`;
- detailModal.classList.remove('hidden')
+ openDetailModal()
 }
-async function showHorse(id){const h=await api('/api/horses/'+encodeURIComponent(id));detailModalBody.innerHTML=`<h2>競走馬詳細：${h.horse.name}</h2><p class="muted">${h.horse.sex||''} ${h.horse.birth_year?`${h.horse.birth_year}年生`:''} / ${h.horse.stable||''}</p>${h.watch?`<p><span class="pill">登録馬</span>${h.watch.alert_condition||''} ${h.watch.note||''}</p>`:''}<h3>出走予定/出走歴</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>レース</th><th>枠/馬</th><th>騎手</th><th>脚質</th><th>理論</th><th>実</th></tr></thead><tbody>${(h.entries||[]).map(e=>`<tr><td>${e.date}</td><td>${e.venue}${e.race_no}R ${e.race_name}<br><span class="muted">${e.surface}${e.distance}m ${e.going||''}</span></td><td>${horseNoBadge(e)}</td><td>${e.jockey||''}</td><td>${styleBadge(e.running_style)}</td><td>${e.theoretical_odds||''}</td><td>${e.actual_odds||''}</td></tr>`).join('')}</tbody></table></div><h3>過去走</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>開催</th><th>条件</th><th>着順</th><th>人気</th><th>騎手</th><th>通過</th><th>上がり</th></tr></thead><tbody>${(h.pastRuns||[]).map(p=>`<tr><td>${p.date}</td><td>${p.venue}</td><td>${p.surface}${p.distance}m ${p.going||''}</td><td>${p.finish_position}</td><td>${p.popularity}</td><td>${p.jockey}</td><td>${p.passing_order||''}</td><td>${p.last_3f||''}</td></tr>`).join('')}</tbody></table></div><h3>追い切り履歴</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>ラップ</th><th>評価</th></tr></thead><tbody>${(h.workouts||[]).map(w=>`<tr><td>${w.date}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td>${w.lap_text||''}</td><td>${pct(w.percentile)}</td></tr>`).join('')}</tbody></table></div>`;detailModal.classList.remove('hidden')}
+function agariRankMedals(pastRuns){
+ const sorted=[...(pastRuns||[])].filter(p=>Number(p.last_3f)>0).sort((a,b)=>Number(a.last_3f)-Number(b.last_3f));
+ const map={};
+ sorted.forEach((p,idx)=>{const key=`${p.date}:${p.venue}:${p.race_name}:${p.last_3f}`; if(!map[key]) map[key]=idx+1;});
+ return map;
+}
+function agariCell(p, rankMap){
+ const rawRank=p.last_3f_rank ?? p.agari_rank ?? p.rank_last_3f;
+ const key=`${p.date}:${p.venue}:${p.race_name}:${p.last_3f}`;
+ const rank=Number(rawRank || rankMap[key] || 0);
+ const cls=rank===1?'agari-gold':rank===2?'agari-silver':rank===3?'agari-bronze':'';
+ const medal=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'';
+ return `<span class="agari ${cls}">${medal}${p.last_3f||'-'}${rank?` <small>${rank}位</small>`:''}</span>`;
+}
+async function showHorse(id){
+ const h=await api('/api/horses/'+encodeURIComponent(id));
+ const rankMap=agariRankMedals(h.pastRuns||[]);
+ detailModalBody.innerHTML=`<h2>競走馬詳細：${h.horse.name}</h2><div class="modal-nav"><button onclick="scrollModalTo('horse-basic')">基本</button><button onclick="scrollModalTo('horse-workouts')">追い切り</button><button onclick="scrollModalTo('horse-past-runs')">過去走</button></div><section id="horse-basic"><p class="muted">${h.horse.sex||''} ${h.horse.birth_year?`${h.horse.birth_year}年生`:''} / ${h.horse.stable||''}</p>${h.watch?`<p><span class="pill">登録馬</span>${h.watch.alert_condition||''} ${h.watch.note||''}</p>`:''}<h3>出走予定/出走歴</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>レース</th><th>枠/馬</th><th>騎手</th><th>脚質</th><th>理論</th><th>実</th></tr></thead><tbody>${(h.entries||[]).map(e=>`<tr><td>${e.date}</td><td>${e.venue}${e.race_no}R ${e.race_name}<br><span class="muted">${e.surface}${e.distance}m ${e.going||''}</span></td><td>${horseNoBadge(e)}</td><td>${e.jockey||''}</td><td>${styleBadge(e.running_style)}</td><td>${e.theoretical_odds||''}</td><td>${e.actual_odds||''}</td></tr>`).join('')}</tbody></table></div></section><section id="horse-workouts"><h3>追い切り履歴</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>ラップ</th><th>評価</th></tr></thead><tbody>${(h.workouts||[]).map(w=>`<tr><td>${w.date}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td>${w.lap_text||''}</td><td>${pct(w.percentile)}</td></tr>`).join('')}</tbody></table></div></section><section id="horse-past-runs"><h3>過去走</h3><div class="table-wrap"><table><thead><tr><th>日付</th><th>開催</th><th>条件</th><th>着順</th><th>人気</th><th>騎手</th><th>通過</th><th>上がり</th></tr></thead><tbody>${(h.pastRuns||[]).map(p=>`<tr><td>${p.date}</td><td>${p.venue}</td><td>${p.surface}${p.distance}m ${p.going||''}</td><td>${p.finish_position}</td><td>${p.popularity}</td><td>${p.jockey}</td><td>${p.passing_order||''}</td><td>${agariCell(p,rankMap)}</td></tr>`).join('')}</tbody></table></div></section>`;
+ openDetailModal();
+}
 function lapValue(w,key){const v=w[key];return v===null||v===undefined||v===''?'':Number(v).toFixed(1).replace(/\.0$/,'')}
 function intensityGroup(i){return String(i||'').includes('馬なり')?'easy':'hard'}
 function rankClasses(workouts, visible){
