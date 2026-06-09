@@ -19,5 +19,6 @@ function ensureColumn(table, column, definition) {
 ensureColumn('entries', 'running_style', "TEXT DEFAULT ''");
 ensureColumn('biases', 'deep_closer', 'INTEGER DEFAULT 0');
 ensureColumn('watch_horses', 'alert_condition', "TEXT DEFAULT ''");
+ensureColumn('entries', 'manual_mark', "TEXT DEFAULT ''");
 
 export function nowIso() { return new Date().toISOString(); }

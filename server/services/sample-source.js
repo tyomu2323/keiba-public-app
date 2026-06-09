@@ -61,6 +61,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
   const insertCourseTrend = db.prepare(`INSERT INTO course_trends
     (venue,surface,distance,sample_from,sample_to,frame_no,running_style,starts,wins,seconds,thirds,win_rate,place3_rate,score,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const insertRule = db.prepare(`INSERT INTO scoring_rules (name,category,condition_json,score,enabled,sort_order,updated_at) VALUES (?,?,?,?,?,?,?)`);
 
   const tx = db.transaction(() => {
     for (const r of races) insertRace.run({ ...r, updated_at: nowIso() });
@@ -110,6 +111,20 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
           }
         }
       }
+    }
+
+    if (db.prepare('SELECT COUNT(*) c FROM scoring_rules').get().c === 0) {
+      const rules = [
+        ['最終追い切り上位15%','workout','{"type":"top15"}',10,1,1],
+        ['馬なり上位15%','workout','{"type":"best_like"}',12,1,2],
+        ['同距離3着以内','past_run','{"type":"same_distance_top3"}',8,1,3],
+        ['同開催場3着以内','past_run','{"type":"same_venue_top3"}',6,1,4],
+        ['騎手直近1ヶ月勝率15%以上','jockey','{"type":"recent_win_rate","min":15}',5,1,5],
+        ['好走枠','trend','{"type":"good_frame","min":5}',4,1,6],
+        ['脚質バイアス一致','bias','{"type":"style_bias"}',5,1,7],
+        ['期待値あり','odds','{"type":"value"}',5,1,8]
+      ];
+      for (const r of rules) insertRule.run(...r, nowIso());
     }
   });
   tx();
