@@ -106,7 +106,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         const fourths = period === 'recent_1m' ? 3+i%3 : period === 'year' ? 20+i : 610+i*2;
         const others = Math.max(0, baseStarts - wins - seconds - thirds - fourths);
         insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, '', '', null, baseStarts, wins, seconds, thirds, fourths, others, Number((wins/baseStarts*100).toFixed(1)), Number(((wins+seconds)/baseStarts*100).toFixed(1)), Number(((wins+seconds+thirds)/baseStarts*100).toFixed(1)), 90+i*5, 80+i*4, nowIso());
-        for (const dist of [1200,1600,1800,2000]) {
+        for (const dist of [1000,1150,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2600,3000,3200,3400,3600]) {
           const st = Math.max(8, Math.floor(baseStarts / (period==='lifetime'?18:8)) + (dist/400)%4 + i);
           const w = Math.max(1, Math.floor(st * (0.10 + i*0.005 + (dist===1600?0.03:0))));
           const s2 = Math.max(1, Math.floor(st * 0.10));
@@ -122,7 +122,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
           const f4 = Math.max(0, Math.floor(st * 0.08));
           insertJockeyStat.run(jockeys[i], period, '2026-05-01', today, '', course.surface, course.distance, st, w, s2, t3, f4, Math.max(0, st-w-s2-t3-f4), Number((w/st*100).toFixed(1)), Number(((w+s2)/st*100).toFixed(1)), Number(((w+s2+t3)/st*100).toFixed(1)), 91+i*3, 82+i*2, nowIso());
         }
-        for (const venue of ['東京','京都','函館']) {
+        for (const venue of ['札幌','函館','福島','新潟','東京','中山','中京','京都','阪神','小倉']) {
           const st = Math.max(12, Math.floor(baseStarts / (period==='lifetime'?20:9)) + i);
           const w = Math.max(1, Math.floor(st * (venue==='東京'?0.15:0.11) + i%2));
           const s2 = Math.max(1, Math.floor(st * 0.10));

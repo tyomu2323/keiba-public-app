@@ -8,6 +8,13 @@ function horseNoBadge(e){return `<span class="frame-badge ${frameClass(e.frame_n
 function stars(n){return '★'.repeat(Number(n)||0)}
 function styleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
 function scoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
+
+const JRA_DISTANCES = [1000,1150,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2600,3000,3200,3400,3600];
+const JRA_VENUES = ['札幌','函館','福島','新潟','東京','中山','中京','京都','阪神','小倉'];
+function emptyStat(base){return {starts:0,wins:0,seconds:0,thirds:0,fourths:0,fifths_or_worse:0,win_rate:0,place2_rate:0,place3_rate:0,win_return_rate:'-',place_return_rate:'-',...base}}
+function fillDistances(rows){const map=new Map(rows.map(s=>[Number(s.distance),s]));return JRA_DISTANCES.map(d=>map.get(d)||emptyStat({distance:d}))}
+function fillVenues(rows){const map=new Map(rows.map(s=>[s.venue,s]));return JRA_VENUES.map(v=>map.get(v)||emptyStat({venue:v}))}
+
 let currentRaceDetail=null;
 async function load(){
  const [recs,races,watch]=await Promise.all([api('/api/recommendations'),api('/api/races'),api('/api/watch-horses')]);
@@ -61,9 +68,9 @@ function statSection(title, rows){
 }
 function periodPanel(period, rows){
  const overall=rows.filter(s=>statType(s)==='overall');
- const distance=rows.filter(s=>statType(s)==='distance').sort((a,b)=>(a.distance||0)-(b.distance||0));
- const course=rows.filter(s=>statType(s)==='course').sort((a,b)=>`${a.surface||''}${a.distance||0}`.localeCompare(`${b.surface||''}${b.distance||0}`));
- const venue=rows.filter(s=>statType(s)==='venue').sort((a,b)=>(a.venue||'').localeCompare(b.venue||''));
+ const distance=fillDistances(rows.filter(s=>statType(s)==='distance')).sort((a,b)=>(a.distance||0)-(b.distance||0));
+ const course=rows.filter(s=>statType(s)==='course').sort((a,b)=>`${a.surface||''}${String(a.distance||0).padStart(4,'0')}`.localeCompare(`${b.surface||''}${String(b.distance||0).padStart(4,'0')}`));
+ const venue=fillVenues(rows.filter(s=>statType(s)==='venue'));
  return `<div class="period-panel"><h3>${statLabel(period)} <span class="muted">1-2-3-4-5着以下</span></h3>${statSection('総合', overall)}${statSection('距離別', distance)}${statSection('コース別', course)}${statSection('開催場別', venue)}</div>`;
 }
 async function showJockey(encodedName){
