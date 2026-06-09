@@ -1,13 +1,14 @@
 {
   "name": "keiba-public-full",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
     "seed": "node server/seed.js",
-    "fetch:weekend": "node scripts/fetch-weekend.js"
+    "fetch:weekend": "node scripts/fetch-weekend.js",
+    "backup:db": "node scripts/backup-db.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -18,5 +19,8 @@
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^3.0.3"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "engines": {
+    "node": "20.x"
+  }
 }
