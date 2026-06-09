@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta name="robots" content="noindex,nofollow">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>競馬分析ダッシュボード</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>競馬分析ダッシュボード</h1>
+    <a href="/admin.html">管理者</a>
+  </header>
+  <main>
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <h2>今週のレース一覧</h2>
+          <p class="muted">開催場ごとに1R〜12Rを表示。ボタンを押すとレース詳細へ移動します。</p>
+        </div>
+        <button onclick="load()">再読み込み</button>
+      </div>
+      <div id="raceBoard" class="venue-board">読み込み中...</div>
+    </section>
+
+    <section class="card">
+      <h2>管理者おすすめ馬</h2>
+      <div id="recs" class="grid"></div>
+    </section>
+
+    <section id="race-detail-card" class="card">
+      <h2>レース詳細</h2>
+      <div id="detail">上のレースボタンを選択してください。</div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
