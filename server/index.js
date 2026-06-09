@@ -36,7 +36,7 @@ app.get('/api/races/:id', (req, res) => {
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
   `).all(req.params.id);
-  const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=?').all(req.params.id);
+  const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=? ORDER BY horse_id, date DESC, id DESC').all(req.params.id);
   const bias = db.prepare('SELECT * FROM biases WHERE date=? AND venue=? AND surface=?').get(race.date, race.venue, race.surface) || null;
   res.json({ race, entries, workouts, bias });
 });
@@ -65,6 +65,34 @@ app.get('/api/admin/logs', requireAdmin, (req, res) => {
   res.json({ logs: db.prepare('SELECT * FROM fetch_logs ORDER BY id DESC LIMIT 50').all() });
 });
 
+app.get('/api/watch-horses', (req, res) => {
+  const rows = db.prepare(`
+    SELECT w.*, e.race_id, e.frame_no, e.horse_no, r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance
+    FROM watch_horses w
+    LEFT JOIN entries e ON e.horse_id=w.horse_id
+    LEFT JOIN races r ON r.id=e.race_id
+    WHERE w.active=1
+    ORDER BY CASE WHEN e.race_id IS NULL THEN 2 ELSE 1 END, r.date, r.venue, r.race_no, w.horse_name
+  `).all();
+  res.json({ watch_horses: rows });
+});
+
+app.post('/api/admin/watch-horses', requireAdmin, (req, res) => {
+  const { horse_name, note='', alert_condition='注目' } = req.body || {};
+  if (!horse_name || !horse_name.trim()) return res.status(400).json({ error: 'horse_name is required' });
+  const name = horse_name.trim();
+  let horse = db.prepare('SELECT * FROM horses WHERE name=?').get(name);
+  if (!horse) {
+    const id = 'watch-' + Buffer.from(name).toString('hex').slice(0, 24);
+    db.prepare('INSERT OR IGNORE INTO horses (id,name,updated_at) VALUES (?,?,?)').run(id, name, nowIso());
+    horse = { id, name };
+  }
+  db.prepare(`INSERT INTO watch_horses (horse_id,horse_name,note,alert_condition,active,updated_at) VALUES (?,?,?,?,1,?)
+    ON CONFLICT(horse_name) DO UPDATE SET horse_id=excluded.horse_id,note=excluded.note,alert_condition=excluded.alert_condition,active=1,updated_at=excluded.updated_at`)
+    .run(horse.id, name, note, alert_condition, nowIso());
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/recommendations', requireAdmin, (req, res) => {
   const { race_id, horse_id, mark, confidence=3, reason='', bet_note='', add_score=0 } = req.body || {};
   if (!race_id || !horse_id || !mark) return res.status(400).json({ error: 'race_id, horse_id, mark are required' });
@@ -74,12 +102,12 @@ app.post('/api/admin/recommendations', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/biases', requireAdmin, (req, res) => {
-  const { date, venue, surface, inside=0, outside=0, front=0, stalker=0, closer=0, comment='' } = req.body || {};
+  const { date, venue, surface, inside=0, outside=0, front=0, stalker=0, closer=0, deep_closer=0, comment='' } = req.body || {};
   if (!date || !venue || !surface) return res.status(400).json({ error: 'date, venue, surface are required' });
-  db.prepare(`INSERT INTO biases (date,venue,surface,inside,outside,front,stalker,closer,comment,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(date,venue,surface) DO UPDATE SET inside=excluded.inside,outside=excluded.outside,front=excluded.front,stalker=excluded.stalker,closer=excluded.closer,comment=excluded.comment,updated_at=excluded.updated_at`)
-    .run(date, venue, surface, inside, outside, front, stalker, closer, comment, nowIso());
+  db.prepare(`INSERT INTO biases (date,venue,surface,inside,outside,front,stalker,closer,deep_closer,comment,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(date,venue,surface) DO UPDATE SET inside=excluded.inside,outside=excluded.outside,front=excluded.front,stalker=excluded.stalker,closer=excluded.closer,deep_closer=excluded.deep_closer,comment=excluded.comment,updated_at=excluded.updated_at`)
+    .run(date, venue, surface, inside, outside, front, stalker, closer, deep_closer, comment, nowIso());
   res.json({ ok: true });
 });
 

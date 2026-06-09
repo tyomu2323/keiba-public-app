@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS entries (
   theoretical_odds REAL,
   score REAL DEFAULT 0,
   status TEXT DEFAULT '出走予定',
+  running_style TEXT DEFAULT '',
   updated_at TEXT NOT NULL,
   PRIMARY KEY (race_id, horse_id),
   FOREIGN KEY (race_id) REFERENCES races(id),
@@ -303,7 +304,8 @@ CREATE TABLE IF NOT EXISTS watch_horses (
   alert_condition TEXT DEFAULT '',
   active INTEGER DEFAULT 1,
   updated_at TEXT NOT NULL,
-  UNIQUE(horse_id)
+  UNIQUE(horse_id),
+  UNIQUE(horse_name)
 );
 
 CREATE TABLE IF NOT EXISTS fetch_logs (

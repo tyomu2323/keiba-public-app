@@ -47,8 +47,8 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
   const insertHorse = db.prepare(`INSERT OR REPLACE INTO horses
     (id,name,sex,birth_year,stable,updated_at) VALUES (?,?,?,?,?,?)`);
   const insertEntry = db.prepare(`INSERT OR REPLACE INTO entries
-    (race_id,horse_id,frame_no,horse_no,sex_age,carried_weight,jockey,jockey_id,trainer,trainer_id,body_weight,body_weight_diff,popularity,actual_odds,expected_win_rate,theoretical_odds,score,status,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (race_id,horse_id,frame_no,horse_no,sex_age,carried_weight,jockey,jockey_id,trainer,trainer_id,body_weight,body_weight_diff,popularity,actual_odds,expected_win_rate,theoretical_odds,score,status,running_style,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertWorkout = db.prepare(`INSERT INTO workouts
     (race_id,horse_id,date,course,lap_text,furlong_6,furlong_5,furlong_4,furlong_3,furlong_2,furlong_1,last_furlong,total_time,intensity,rank_in_race,percentile,top15_flag,top25_flag,workout_score,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -79,12 +79,16 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         const expectedWinRate = Number((Math.max(3, 24 - i * 2.3)).toFixed(1));
         const theoretical = Number((100 / expectedWinRate).toFixed(1));
         const actual = Number((theoretical * (i % 2 === 0 ? 1.45 : 0.86)).toFixed(1));
-        insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', 57, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', nowIso());
+        insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', 57, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
         const isTop = i === 0;
-        const percentile = i === 0 ? 0.12 : i === 1 ? 0.22 : 0.38 + i * 0.04;
-        const flags = pctFlags(percentile);
-        insertWorkout.run(r.id, h[0], today, isTop ? 'CW' : '坂路', isTop ? '82.1-66.3-51.8-37.2-11.5' : `${(54+i/10).toFixed(1)}-38.${i}-24.${i}-12.${i}`,
-          isTop ? 82.1 : null, isTop ? 66.3 : null, isTop ? 51.8 : Number((54+i/10).toFixed(1)), isTop ? 37.2 : Number(`38.${i}`), isTop ? null : Number(`24.${i}`), isTop ? 11.5 : Number(`12.${i}`), isTop ? 11.5 : Number(`12.${i}`), isTop ? 82.1 : Number((54+i/10).toFixed(1)), i % 3 === 0 ? '馬なり' : i % 3 === 1 ? '強め' : '一杯', i+1, percentile, flags.top15, flags.top25, flags.top15 ? 10 : flags.top25 ? 6 : 2, nowIso());
+        for (let widx = 0; widx < 3; widx++) {
+          const percentile = i === 0 && widx === 0 ? 0.12 : i === 1 && widx === 0 ? 0.22 : 0.38 + i * 0.04 + widx * 0.02;
+          const flags = pctFlags(percentile);
+          const wDate = new Date(Date.now() - widx * 3 * 24 * 60 * 60 * 1000).toISOString().slice(0,10);
+          const finalTop = isTop && widx === 0;
+          insertWorkout.run(r.id, h[0], wDate, finalTop ? 'CW' : '坂路', finalTop ? '82.1-66.3-51.8-37.2-11.5' : `${(54+i/10+widx/5).toFixed(1)}-38.${i+widx}-24.${i}-12.${i+widx}`,
+            finalTop ? 82.1 : null, finalTop ? 66.3 : null, finalTop ? 51.8 : Number((54+i/10+widx/5).toFixed(1)), finalTop ? 37.2 : Number(`38.${i+widx}`), finalTop ? null : Number(`24.${i}`), finalTop ? 11.5 : Number(`12.${i+widx}`), finalTop ? 11.5 : Number(`12.${i+widx}`), finalTop ? 82.1 : Number((54+i/10+widx/5).toFixed(1)), (i + widx) % 3 === 0 ? '馬なり' : (i + widx) % 3 === 1 ? '強め' : '一杯', i+1+widx, percentile, flags.top15, flags.top25, flags.top15 ? 10 : flags.top25 ? 6 : 2, nowIso());
+        }
 
         for (let p = 1; p <= 5; p++) {
           insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山'][p%3], `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], 57, 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
