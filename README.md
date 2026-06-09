@@ -1,50 +1,29 @@
-# Keiba Public Full
+# Keiba Public Full v9
 
-公開用の競馬分析ダッシュボード雛形です。
+v9追加内容:
+- 加点ルールの点数を管理画面から編集可能
+- 追い切り欄に調教コース表示を強化
+- 騎手名クリックで騎手詳細を表示
+  - 直近1ヶ月 / 本年度 / 通算
+  - 開催場別・距離別の成績表示に対応
+- 馬名クリックで競走馬詳細を表示
+  - 基本情報
+  - 出走予定/出走歴
+  - 過去走
+  - 追い切り履歴
+  - 登録馬メモ
+- JRA-VAN接続前でもサンプルデータで表示確認可能
 
-## 機能
-- 一般公開画面
-- 管理者ログイン
-- 管理者おすすめ馬登録
-- バイアス手入力
-- 任意タイミングの手動データ取得ボタン
-- 金土日スケジュール取得の雛形
-- JRA-VAN / JV-Link 連携アダプタ差し替え口
+Render更新時:
+1. ZIPを解凍
+2. GitHub Desktop管理フォルダの中身をv9の中身で差し替え
+3. Summaryに `upgrade to v9` と入力
+4. Commit to main
+5. Push origin
+6. Renderで Manual Deploy → Clear build cache & deploy
 
-## ローカル起動
-```bash
-npm install
-cp .env.example .env
-npm run seed
-npm start
-```
+Build Command:
+`npm install && npm rebuild better-sqlite3`
 
-http://localhost:3000 を開きます。
-
-管理画面: http://localhost:3000/admin.html
-初期ログインは `.env` の ADMIN_USER / ADMIN_PASSWORD を使います。
-
-## 注意
-JRA-VANの実取得にはWindows PC、JRA-VAN Data Lab.契約、JV-Link、利用キー設定が必要です。
-このプロジェクトには実キーや認証情報を含めないでください。
-
-
-## v5: 管理者ログイン付き公開運用
-
-- 公開画面: ログイン不要
-- 管理画面: ログイン必須
-- 検索避け: noindex,nofollow
-- 推奨公開先: Render（Node/Expressサーバーとして起動）
-- 詳細: docs/deploy-admin-login.md
-
-
-## v8 追加
-- 加点ルール管理画面
-- 自動加点内訳表示
-- 競馬新聞風レース詳細
-- 追い切りを馬ごとにまとめて表示
-- 最終追い切り/全追い切り切替
-- ハロンごとの上位15%/25%色分け
-- 馬なり: 25%=黄色、15%=赤
-- 強め/一杯: 25%=水色、15%=青
-- ベストタイムに🏆マーク
+Start Command:
+`node server/index.js`

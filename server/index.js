@@ -118,6 +118,39 @@ app.get('/api/recommendations', (req, res) => {
   res.json({ recommendations: rows });
 });
 
+
+app.get('/api/jockeys/:name', (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const stats = db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? ORDER BY CASE period_type WHEN 'recent_1m' THEN 1 WHEN 'year' THEN 2 WHEN 'lifetime' THEN 3 ELSE 9 END, venue, surface, distance`).all(name);
+  const recentRides = db.prepare(`
+    SELECT r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance, h.name horse_name, e.frame_no, e.horse_no, e.popularity, e.actual_odds, e.running_style
+    FROM entries e
+    JOIN races r ON r.id=e.race_id
+    JOIN horses h ON h.id=e.horse_id
+    WHERE e.jockey=?
+    ORDER BY r.date DESC, r.venue, r.race_no
+    LIMIT 50
+  `).all(name);
+  res.json({ jockey: { name }, stats, recentRides });
+});
+
+app.get('/api/horses/:id', (req, res) => {
+  const id = decodeURIComponent(req.params.id);
+  const horse = db.prepare('SELECT * FROM horses WHERE id=?').get(id);
+  if(!horse) return res.status(404).json({ error: 'not_found' });
+  const entries = db.prepare(`
+    SELECT e.*, r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance, r.going
+    FROM entries e JOIN races r ON r.id=e.race_id
+    WHERE e.horse_id=?
+    ORDER BY r.date DESC, r.venue, r.race_no
+  `).all(id);
+  const workouts = db.prepare('SELECT * FROM workouts WHERE horse_id=? ORDER BY date DESC, id DESC LIMIT 100').all(id);
+  const pastRuns = db.prepare('SELECT * FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 50').all(id);
+  const watch = db.prepare('SELECT * FROM watch_horses WHERE horse_id=? OR horse_name=?').get(id, horse.name) || null;
+  const scores = db.prepare('SELECT * FROM horse_scores WHERE horse_id=? ORDER BY updated_at DESC LIMIT 50').all(id);
+  res.json({ horse, entries, workouts, pastRuns, watch, scores });
+});
+
 app.post('/api/admin/fetch', requireAdmin, async (req, res) => {
   try {
     const result = await runFetch({ mode: req.body?.mode || 'manual', ...req.body });
@@ -187,6 +220,16 @@ app.post('/api/admin/scoring-rules', requireAdmin, (req, res) => {
   if(!name || !category) return res.status(400).json({ error: 'name and category are required' });
   db.prepare('INSERT INTO scoring_rules (name,category,condition_json,score,enabled,sort_order,updated_at) VALUES (?,?,?,?,?,?,?)')
     .run(name, category, condition_json, Number(score)||0, enabled?1:0, Number(sort_order)||0, nowIso());
+  res.json({ ok: true });
+});
+
+
+app.put('/api/admin/scoring-rules/:id', requireAdmin, (req, res) => {
+  const { name, category, condition_json='{}', score=0, enabled=1, sort_order=0 } = req.body || {};
+  const row = db.prepare('SELECT * FROM scoring_rules WHERE id=?').get(req.params.id);
+  if(!row) return res.status(404).json({ error: 'not_found' });
+  db.prepare('UPDATE scoring_rules SET name=?, category=?, condition_json=?, score=?, enabled=?, sort_order=?, updated_at=? WHERE id=?')
+    .run(name || row.name, category || row.category, condition_json, Number(score)||0, enabled?1:0, Number(sort_order)||0, nowIso(), req.params.id);
   res.json({ ok: true });
 });
 
