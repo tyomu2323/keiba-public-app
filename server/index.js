@@ -6,6 +6,31 @@ import { db, nowIso } from './db.js';
 import { requireAdmin, signToken, passwordMatches } from './auth.js';
 import { runFetch } from './services/fetcher.js';
 
+
+function raceTurn(venue){
+  return ['東京','新潟','中京'].includes(String(venue||'')) ? '左' : '右';
+}
+function isSmallCourse(venue){
+  return ['中山','小倉','福島','函館'].includes(String(venue||''));
+}
+function isBigOuterLike(venue){
+  return ['東京','阪神','京都'].includes(String(venue||''));
+}
+function top3(p){ return Number(p?.finish_position||99) <= 3; }
+function getLast3fRank(pastRun){
+  const r = Number(pastRun?.last_3f_rank ?? pastRun?.agari_rank ?? pastRun?.rank_last_3f ?? 0);
+  return r || 0;
+}
+function isSelfConditionRace(race){
+  const c = String(race?.class_name||'');
+  return /未勝利|1勝|2勝|3勝|500万|1000万|1600万/.test(c) && !/OP|オープン|G1|G2|G3|重賞/.test(c);
+}
+function isGradedRaceName(name, className=''){
+  return /G1|G2|G3|重賞|オープン|OP/.test(String(name||'') + String(className||''));
+}
+function isHandicapRace(race){
+  return /ハンデ|H|HANDICAP/i.test(String(race?.name||'') + String(race?.class_name||''));
+}
 function calcRuleScoresForRace(raceId){
   const race = db.prepare('SELECT * FROM races WHERE id=?').get(raceId);
   if(!race) return [];
@@ -14,11 +39,15 @@ function calcRuleScoresForRace(raceId){
   const rules = db.prepare('SELECT * FROM scoring_rules WHERE enabled=1 ORDER BY sort_order, id').all();
   db.prepare('DELETE FROM horse_scores WHERE race_id=?').run(raceId);
   const insert = db.prepare('INSERT OR REPLACE INTO horse_scores (race_id,horse_id,category,rule_name,score,reason,updated_at) VALUES (?,?,?,?,?,?,?)');
+  const maxWeight = entries.reduce((m,e)=>Math.max(m, Number(e.carried_weight||0)), 0);
   for(const e of entries){
     const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=? AND horse_id=? ORDER BY date DESC, id DESC').all(raceId,e.horse_id);
     const finalW = workouts[0] || null;
-    const past = db.prepare('SELECT * FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 5').all(e.horse_id);
-    const jockeyRecent = db.prepare("SELECT * FROM jockey_stats WHERE jockey=? AND period_type='recent_1m' ORDER BY id DESC LIMIT 1").get(e.jockey);
+    const past = db.prepare('SELECT * FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 10').all(e.horse_id);
+    const last = past[0] || null;
+    const prev = past[1] || null;
+    const jockeyRecent = db.prepare("SELECT * FROM jockey_stats WHERE jockey=? AND period_type='recent_1m' AND COALESCE(venue,'')='' AND COALESCE(surface,'')='' AND distance IS NULL ORDER BY id DESC LIMIT 1").get(e.jockey)
+      || db.prepare("SELECT * FROM jockey_stats WHERE jockey=? AND period_type='recent_1m' ORDER BY id DESC LIMIT 1").get(e.jockey);
     const trend = db.prepare('SELECT * FROM course_trends WHERE venue=? AND surface=? AND distance=? AND frame_no=? ORDER BY id DESC LIMIT 1').get(race.venue,race.surface,race.distance,e.frame_no);
     for(const rule of rules){
       let c={}; try{ c=JSON.parse(rule.condition_json||'{}') }catch{}
@@ -29,9 +58,32 @@ function calcRuleScoresForRace(raceId){
         if(c.type==='best_like' && finalW && Number(finalW.percentile)<=0.15 && String(finalW.intensity).includes('馬なり')){ok=true; reason='馬なりで上位15%の好内容';}
       }
       if(rule.category==='past_run'){
-        if(c.type==='same_distance_top3' && past.some(p=>p.surface===race.surface && Number(p.distance)===Number(race.distance) && Number(p.finish_position)<=3)){ok=true; reason=`同条件距離で3着以内あり`;}
-        if(c.type==='same_venue_top3' && past.some(p=>p.venue===race.venue && p.surface===race.surface && Number(p.finish_position)<=3)){ok=true; reason=`同開催場で3着以内あり`;}
+        if(c.type==='distance_experience' && past.some(p=>Number(p.distance)===Number(race.distance) && top3(p))){ok=true; reason=`距離${race.distance}mで3着以内あり`;}
+        if(c.type==='same_distance_top3' && past.some(p=>p.surface===race.surface && Number(p.distance)===Number(race.distance) && top3(p))){ok=true; reason=`同距離・同馬場で3着以内あり`;}
+        if(c.type==='same_venue_top3' && past.some(p=>p.venue===race.venue && top3(p))){ok=true; reason=`${race.venue}で3着以内あり`;}
+        if(c.type==='same_condition_top3' && past.some(p=>p.venue===race.venue && p.surface===race.surface && Number(p.distance)===Number(race.distance) && top3(p))){ok=true; reason=`同条件（${race.venue}${race.surface}${race.distance}m）で3着以内あり`;}
+        if(c.type==='same_turn_top3' && past.some(p=>raceTurn(p.venue)===raceTurn(race.venue) && top3(p))){ok=true; reason=`${raceTurn(race.venue)}回りで3着以内あり`;}
+        if(c.type==='small_course_top3' && isSmallCourse(race.venue) && past.some(p=>isSmallCourse(p.venue) && top3(p))){ok=true; reason='小回りコース実績あり';}
+        if(c.type==='big_outer_top3' && isBigOuterLike(race.venue) && past.some(p=>isBigOuterLike(p.venue) && top3(p))){ok=true; reason='大箱/外回り系コース実績あり';}
+        if(c.type==='last_run_agari_top3' && getLast3fRank(last)>0 && getLast3fRank(last)<=3){ok=true; reason=`前走上がり${getLast3fRank(last)}位`;}
+        if(c.type==='last_run_distance_up_top3' && last && prev && Number(last.distance)>Number(prev.distance) && top3(last)){ok=true; reason=`前走が距離延長で${last.finish_position}着`;}
+        if(c.type==='last_run_distance_down_top3' && last && prev && Number(last.distance)<Number(prev.distance) && top3(last)){ok=true; reason=`前走が距離短縮で${last.finish_position}着`;}
+        if(c.type==='graded_top5' && past.some(p=>isGradedRaceName(p.race_name,p.class_name) && Number(p.finish_position||99)<=5)){ok=true; reason='重賞/OPで5着以内あり';}
         if(c.type==='last3f_good' && past.some(p=>Number(p.last_3f)>0 && Number(p.last_3f)<=34.5)){ok=true; reason='過去走で上がり34.5秒以内あり';}
+      }
+      if(rule.category==='race_class'){
+        if(c.type==='self_condition' && isSelfConditionRace(race)){ok=true; reason='自己条件レース';}
+      }
+      if(rule.category==='weight'){
+        if(c.type==='handicap_light' && isHandicapRace(race) && maxWeight>0){
+          const diff = maxWeight - Number(e.carried_weight||0);
+          if(diff>0){ ok=true; reason=`ハンデ戦斤量補正：最重量${maxWeight}kgから${diff.toFixed(1)}kg軽い`; }
+        }
+      }
+      if(rule.category==='manual_note'){
+        if(c.type==='distance_up_note'){ reason='但し書き：距離延長が合いそうかは手動判断。初期点0。'; }
+        if(c.type==='distance_down_note'){ reason='但し書き：距離短縮が合いそうかは手動判断。初期点0。'; }
+        ok = true;
       }
       if(rule.category==='jockey'){
         if(c.type==='recent_win_rate' && Number(jockeyRecent?.win_rate||0)>=Number(c.min||15)){ok=true; reason=`騎手直近1ヶ月勝率 ${jockeyRecent.win_rate}%`;}
@@ -49,17 +101,22 @@ function calcRuleScoresForRace(raceId){
       if(rule.category==='odds'){
         if(c.type==='value' && Number(e.actual_odds||0)>Number(e.theoretical_odds||999)){ok=true; reason=`実オッズ${e.actual_odds} > 理論${e.theoretical_odds}`;}
       }
-      if(ok) insert.run(raceId,e.horse_id,rule.category,rule.name,rule.score,reason,nowIso());
+      if(ok) {
+        const score = c.type==='handicap_light' && isHandicapRace(race) ? Number(((maxWeight - Number(e.carried_weight||0))*0.5).toFixed(1)) : Number(rule.score||0);
+        insert.run(raceId,e.horse_id,rule.category,rule.name,score,reason,nowIso());
+      }
     }
   }
   const rows = db.prepare('SELECT * FROM horse_scores WHERE race_id=?').all(raceId);
   for(const e of entries){
     const ruleSum = rows.filter(r=>r.horse_id===e.horse_id).reduce((a,b)=>a+Number(b.score||0),0);
+    const manualSum = db.prepare('SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=?').get(raceId,e.horse_id)?.s || 0;
     const recAdd = db.prepare('SELECT COALESCE(SUM(add_score),0) s FROM recommendations WHERE race_id=? AND horse_id=?').get(raceId,e.horse_id)?.s || 0;
-    db.prepare('UPDATE entries SET score=? WHERE race_id=? AND horse_id=?').run(Number((ruleSum+recAdd).toFixed(1)),raceId,e.horse_id);
+    db.prepare('UPDATE entries SET score=? WHERE race_id=? AND horse_id=?').run(Number((ruleSum+manualSum+recAdd).toFixed(1)),raceId,e.horse_id);
   }
   return rows;
 }
+
 
 const app = express();
 app.use(cors());
@@ -87,20 +144,26 @@ app.get('/api/races/:id', (req, res) => {
       COALESCE((SELECT mark FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') mark,
       COALESCE((SELECT add_score FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),0) rec_add_score,
       COALESCE((SELECT reason FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') rec_reason,
-      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note
+      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note,
+      COALESCE((SELECT SUM(score) FROM horse_scores hs WHERE hs.race_id=e.race_id AND hs.horse_id=e.horse_id),0) auto_score,
+      COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id),0) manual_score
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
   `).all(req.params.id);
   const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=? ORDER BY horse_id, date DESC, id DESC').all(req.params.id);
   calcRuleScoresForRace(req.params.id);
-  const scores = db.prepare('SELECT * FROM horse_scores WHERE race_id=? ORDER BY horse_id, category, rule_name').all(req.params.id);
+  const autoScores = db.prepare('SELECT race_id,horse_id,category,rule_name,score,reason,updated_at FROM horse_scores WHERE race_id=?').all(req.params.id);
+  const manualScores = db.prepare("SELECT race_id,horse_id,category,label AS rule_name,score,reason,updated_at FROM manual_horse_scores WHERE race_id=?").all(req.params.id).map(r=>({...r, category: r.category || 'manual'}));
+  const scores = [...autoScores, ...manualScores].sort((a,b)=>String(a.horse_id).localeCompare(String(b.horse_id)) || String(a.category).localeCompare(String(b.category)) || String(a.rule_name).localeCompare(String(b.rule_name)));
   const bias = db.prepare('SELECT * FROM biases WHERE date=? AND venue=? AND surface=?').get(race.date, race.venue, race.surface) || null;
   const updatedEntries = db.prepare(`
     SELECT e.*, h.name,
       COALESCE((SELECT mark FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') mark,
       COALESCE((SELECT add_score FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),0) rec_add_score,
       COALESCE((SELECT reason FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') rec_reason,
-      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note
+      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note,
+      COALESCE((SELECT SUM(score) FROM horse_scores hs WHERE hs.race_id=e.race_id AND hs.horse_id=e.horse_id),0) auto_score,
+      COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id),0) manual_score
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
   `).all(req.params.id);
@@ -197,6 +260,32 @@ app.post('/api/admin/recommendations', requireAdmin, (req, res) => {
   if (!race_id || !horse_id || !mark) return res.status(400).json({ error: 'race_id, horse_id, mark are required' });
   db.prepare(`INSERT INTO recommendations (race_id,horse_id,mark,confidence,reason,bet_note,add_score,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
     .run(race_id, horse_id, mark, confidence, reason, bet_note, add_score, nowIso());
+  res.json({ ok: true });
+});
+
+
+app.get('/api/admin/races/:id/workout-scoring', requireAdmin, (req, res) => {
+  const race = db.prepare('SELECT * FROM races WHERE id=?').get(req.params.id);
+  if (!race) return res.status(404).json({ error: 'not_found' });
+  const entries = db.prepare(`
+    SELECT e.*, h.name,
+      COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='workout_manual'),0) workout_manual_score,
+      COALESCE((SELECT reason FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='workout_manual' ORDER BY updated_at DESC LIMIT 1),'') workout_manual_reason
+    FROM entries e JOIN horses h ON h.id=e.horse_id
+    WHERE e.race_id=? ORDER BY e.horse_no
+  `).all(req.params.id);
+  const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=? ORDER BY horse_id, date DESC, id DESC').all(req.params.id);
+  res.json({ race, entries, workouts });
+});
+
+app.post('/api/admin/manual-scores', requireAdmin, (req, res) => {
+  const { race_id, horse_id, category='manual', label='手動加点', score=0, reason='' } = req.body || {};
+  if (!race_id || !horse_id) return res.status(400).json({ error: 'race_id, horse_id are required' });
+  db.prepare(`INSERT INTO manual_horse_scores (race_id,horse_id,category,label,score,reason,updated_at)
+    VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(race_id,horse_id,category,label) DO UPDATE SET score=excluded.score,reason=excluded.reason,updated_at=excluded.updated_at`)
+    .run(race_id, horse_id, category, label, Number(score||0), reason, nowIso());
+  calcRuleScoresForRace(race_id);
   res.json({ ok: true });
 });
 

@@ -22,5 +22,19 @@ ensureColumn('watch_horses', 'alert_condition', "TEXT DEFAULT ''");
 ensureColumn('entries', 'manual_mark', "TEXT DEFAULT ''");
 ensureColumn('jockey_stats', 'fourths', 'INTEGER DEFAULT 0');
 ensureColumn('jockey_stats', 'fifths_or_worse', 'INTEGER DEFAULT 0');
+ensureColumn('horse_past_runs', 'last_3f_rank', 'INTEGER DEFAULT 0');
+
+// V14: 手動加点テーブル。既存DBでも自動作成されます。
+db.exec(`CREATE TABLE IF NOT EXISTS manual_horse_scores (
+  race_id TEXT NOT NULL,
+  horse_id TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'manual',
+  label TEXT NOT NULL DEFAULT '',
+  score REAL NOT NULL DEFAULT 0,
+  reason TEXT DEFAULT '',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (race_id, horse_id, category, label)
+)`);
+
 
 export function nowIso() { return new Date().toISOString(); }

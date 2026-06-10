@@ -3,7 +3,7 @@ function auth(){return {Authorization:'Bearer '+token,'Content-Type':'applicatio
 async function login(){const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user.value,password:pass.value})});const j=await res.json();if(j.token){token=j.token;localStorage.setItem('adminToken',token);showAdmin();}else loginMsg.textContent=j.error||'失敗';}
 function showAdmin(){document.querySelectorAll('.admin-only').forEach(e=>e.classList.remove('hidden'));loginBox.classList.add('hidden');loadRaces();loadLogs();loadWatchHorses();loadScoringRules();}
 async function manualFetch(){fetchResult.textContent='取得中...';const res=await fetch('/api/admin/fetch',{method:'POST',headers:auth(),body:JSON.stringify({mode:'manual',target:target.value,dateFrom:dateFrom.value,dateTo:dateTo.value})});fetchResult.textContent=JSON.stringify(await res.json(),null,2);loadRaces();loadLogs();loadWatchHorses();loadScoringRules();}
-async function loadRaces(){const j=await (await fetch('/api/races')).json();races=j.races;raceSelect.innerHTML=races.map(r=>`<option value="${r.id}">${r.date} ${r.venue}${r.race_no}R ${r.name}</option>`).join('');raceSelect.onchange=loadHorses;loadHorses();renderBiasVenueButtons();}
+async function loadRaces(){const j=await (await fetch('/api/races')).json();races=j.races;raceSelect.innerHTML=races.map(r=>`<option value="${r.id}">${r.date} ${r.venue}${r.race_no}R ${r.name}</option>`).join('');workoutRaceSelect.innerHTML=raceSelect.innerHTML;raceSelect.onchange=loadHorses;loadHorses();renderBiasVenueButtons();}
 function renderBiasVenueButtons(){const venues=[...new Set(races.map(r=>r.venue))];biasVenueButtons.innerHTML=venues.map(v=>`<button onclick="setBiasVenue('${v}')">${v}</button>`).join('');if(venues.length&&!biasVenue.value)biasVenue.value=venues[0];if(races[0]&&!biasDate.value)biasDate.value=races[0].date;}
 function setBiasVenue(v){biasVenue.value=v;}
 async function loadHorses(){if(!raceSelect.value)return;const d=await (await fetch('/api/races/'+encodeURIComponent(raceSelect.value))).json();horseSelect.innerHTML=d.entries.map(e=>`<option value="${e.horse_id}">${e.frame_no}枠 ${e.horse_no}番 ${e.name} / ${e.running_style||'脚質未入力'}</option>`).join('');}
@@ -14,17 +14,23 @@ async function saveBias(){const body={date:biasDate.value,venue:biasVenue.value,
 async function loadLogs(){const res=await fetch('/api/admin/logs',{headers:auth()});logs.textContent=JSON.stringify(await res.json(),null,2)}
 if(token)showAdmin();
 const templates={
- same_distance_top3:{name:'同距離3着以内',category:'past_run',condition:{type:'same_distance_top3'},score:8},
- same_venue_top3:{name:'同開催場3着以内',category:'past_run',condition:{type:'same_venue_top3'},score:6},
- workout_top15:{name:'最終追い切り上位15%',category:'workout',condition:{type:'top15'},score:10},
- workout_top25:{name:'最終追い切り上位25%',category:'workout',condition:{type:'top25'},score:6},
- workout_best_like:{name:'馬なり上位15%',category:'workout',condition:{type:'best_like'},score:12},
- jockey_recent:{name:'騎手直近1ヶ月勝率15%以上',category:'jockey',condition:{type:'recent_win_rate',min:15},score:5},
- good_frame:{name:'好走枠',category:'trend',condition:{type:'good_frame',min:5},score:4},
- style_bias:{name:'脚質バイアス一致',category:'bias',condition:{type:'style_bias'},score:5},
- inside_bias:{name:'内有利バイアス',category:'bias',condition:{type:'inside_bias'},score:3},
- outside_bias:{name:'外有利バイアス',category:'bias',condition:{type:'outside_bias'},score:3},
- odds_value:{name:'期待値あり',category:'odds',condition:{type:'value'},score:5}
+ distance_experience:{name:'距離実績あり',category:'past_run',condition:{type:'distance_experience'},score:1},
+ same_venue_top3:{name:'同場所実績あり',category:'past_run',condition:{type:'same_venue_top3'},score:2},
+ same_turn_top3:{name:'右回り/左回り実績あり',category:'past_run',condition:{type:'same_turn_top3'},score:1},
+ small_course_top3:{name:'小回りコース実績あり',category:'past_run',condition:{type:'small_course_top3'},score:1},
+ big_outer_top3:{name:'大箱/外回り系コース実績あり',category:'past_run',condition:{type:'big_outer_top3'},score:1},
+ last_run_agari_top3:{name:'前走上がり3位以内',category:'past_run',condition:{type:'last_run_agari_top3'},score:1},
+ jockey_recent:{name:'騎手直近1ヶ月勝率15%以上',category:'jockey',condition:{type:'recent_win_rate',min:15},score:1},
+ graded_top5:{name:'重賞5着以内あり',category:'past_run',condition:{type:'graded_top5'},score:1},
+ last_run_distance_up_top3:{name:'前走距離延長で3着以内',category:'past_run',condition:{type:'last_run_distance_up_top3'},score:1},
+ last_run_distance_down_top3:{name:'前走距離短縮で3着以内',category:'past_run',condition:{type:'last_run_distance_down_top3'},score:1},
+ same_condition_top3:{name:'同条件実績あり',category:'past_run',condition:{type:'same_condition_top3'},score:2},
+ self_condition:{name:'自己条件レース',category:'race_class',condition:{type:'self_condition'},score:3},
+ handicap_light:{name:'ハンデ戦斤量補正',category:'weight',condition:{type:'handicap_light'},score:0},
+ distance_up_note:{name:'距離延長が合いそう（手動判断）',category:'manual_note',condition:{type:'distance_up_note'},score:0},
+ distance_down_note:{name:'距離短縮が合いそう（手動判断）',category:'manual_note',condition:{type:'distance_down_note'},score:0},
+ style_bias:{name:'脚質バイアス一致',category:'bias',condition:{type:'style_bias'},score:1},
+ odds_value:{name:'期待値あり',category:'odds',condition:{type:'value'},score:1}
 };
 function applyRuleTemplate(){const t=templates[ruleTemplate.value]; if(!t)return; ruleName.value=t.name; ruleCategory.value=t.category; ruleCondition.value=JSON.stringify(t.condition); ruleScore.value=t.score;}
 async function saveScoringRule(){try{JSON.parse(ruleCondition.value||'{}')}catch(e){ruleMsg.textContent='JSONの形が間違っています';return} const body={name:ruleName.value,category:ruleCategory.value,condition_json:ruleCondition.value,score:+ruleScore.value,enabled:1};const res=await fetch('/api/admin/scoring-rules',{method:'POST',headers:auth(),body:JSON.stringify(body)});ruleMsg.textContent=JSON.stringify(await res.json());loadScoringRules();}
@@ -33,3 +39,21 @@ async function updateRule(id){let condition=document.getElementById('rj'+id).val
 async function toggleRule(id){await fetch('/api/admin/scoring-rules/'+id+'/toggle',{method:'POST',headers:auth()});loadScoringRules();}
 async function deleteRule(id){await fetch('/api/admin/scoring-rules/'+id,{method:'DELETE',headers:auth()});loadScoringRules();}
 setTimeout(()=>{try{applyRuleTemplate()}catch{}},200);
+
+
+function adminHorseNoBadge(e){const colors={1:'white',2:'black',3:'red',4:'blue',5:'yellow',6:'green',7:'orange',8:'pink'};return `<span class="frame-badge frame-${colors[e.frame_no]||'white'}">${e.frame_no}</span><span class="horse-no">${e.horse_no}</span>`}
+function groupWorkouts(workouts){const g={};for(const w of workouts||[]){if(!g[w.horse_id])g[w.horse_id]=[];g[w.horse_id].push(w)}return g;}
+function adminLap(w){return w.lap_text || [w.total_time,w.furlong_6,w.furlong_5,w.furlong_4,w.furlong_3,w.furlong_2,w.furlong_1].filter(v=>v!==null&&v!==undefined&&v!=='').join('-')}
+async function loadWorkoutScoring(){
+  if(!workoutRaceSelect.value){workoutScoring.innerHTML='レースがありません';return;}
+  workoutScoring.innerHTML='読み込み中...';
+  const d=await (await fetch('/api/admin/races/'+encodeURIComponent(workoutRaceSelect.value)+'/workout-scoring',{headers:auth()})).json();
+  const grouped=groupWorkouts(d.workouts||[]);
+  workoutScoring.innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">各馬の追い切りを見て、タイム横のボタンで感覚評価を保存します。</p>`+
+    (d.entries||[]).map(e=>{const list=(grouped[e.horse_id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));const current=Number(e.workout_manual_score||0);return `<div class="rec workout-admin-card"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill">追切手動 ${current}</span></h3>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th></tr></thead><tbody>${list.map(w=>`<tr><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td><b>${adminLap(w)}</b></td><td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===current?'active':''}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">追い切りデータなし</p>'}<textarea id="wmemo-${e.horse_id}" placeholder="追い切りメモ。例：動き良い、反応鋭い、気持ち前向き">${e.workout_manual_reason||''}</textarea></div>`}).join('');
+}
+async function saveWorkoutManualScore(raceId,horseId,score,horseName){
+  const memo=document.getElementById('wmemo-'+horseId)?.value || `追い切り感覚評価：${horseName}`;
+  await fetch('/api/admin/manual-scores',{method:'POST',headers:auth(),body:JSON.stringify({race_id:raceId,horse_id:horseId,category:'workout_manual',label:'追い切り感覚評価',score,reason:memo})});
+  loadWorkoutScoring();
+}

@@ -28,7 +28,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         course_turn: surface === '芝' ? '左' : '右',
         going: no % 4 === 0 ? '稍重' : '良',
         weather: '晴',
-        class_name: no === 11 ? 'OP' : '未勝利',
+        class_name: no === 11 ? 'G3 ハンデ' : (no % 2 === 0 ? '1勝C' : '未勝利'),
         age_condition: '3歳以上',
         start_time: `${String(9 + Math.floor(no / 2)).padStart(2,'0')}:${no % 2 ? '50' : '20'}`
       });
@@ -53,8 +53,8 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
     (race_id,horse_id,date,course,lap_text,furlong_6,furlong_5,furlong_4,furlong_3,furlong_2,furlong_1,last_furlong,total_time,intensity,rank_in_race,percentile,top15_flag,top25_flag,workout_score,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertPastRun = db.prepare(`INSERT INTO horse_past_runs
-    (horse_id,date,venue,race_name,surface,distance,going,class_name,frame_no,horse_no,finish_position,popularity,odds,jockey,carried_weight,body_weight,body_weight_diff,passing_order,last_3f,time_text,time_seconds,margin,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (horse_id,date,venue,race_name,surface,distance,going,class_name,frame_no,horse_no,finish_position,popularity,odds,jockey,carried_weight,body_weight,body_weight_diff,passing_order,last_3f,last_3f_rank,time_text,time_seconds,margin,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertJockeyStat = db.prepare(`INSERT OR REPLACE INTO jockey_stats
     (jockey,period_type,date_from,date_to,venue,surface,distance,starts,wins,seconds,thirds,fourths,fifths_or_worse,win_rate,place2_rate,place3_rate,win_return_rate,place_return_rate,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -92,7 +92,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         }
 
         for (let p = 1; p <= 5; p++) {
-          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山'][p%3], `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], 57, 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
+          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山','小倉'][p%4], p===3 ? `G3 過去サンプル${p}` : `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', p===3 ? 'G3' : '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], 57, 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), Math.min(8, i+p), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
         }
       }
     }
@@ -145,14 +145,23 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
 
     if (db.prepare('SELECT COUNT(*) c FROM scoring_rules').get().c === 0) {
       const rules = [
-        ['最終追い切り上位15%','workout','{"type":"top15"}',10,1,1],
-        ['馬なり上位15%','workout','{"type":"best_like"}',12,1,2],
-        ['同距離3着以内','past_run','{"type":"same_distance_top3"}',8,1,3],
-        ['同開催場3着以内','past_run','{"type":"same_venue_top3"}',6,1,4],
-        ['騎手直近1ヶ月勝率15%以上','jockey','{"type":"recent_win_rate","min":15}',5,1,5],
-        ['好走枠','trend','{"type":"good_frame","min":5}',4,1,6],
-        ['脚質バイアス一致','bias','{"type":"style_bias"}',5,1,7],
-        ['期待値あり','odds','{"type":"value"}',5,1,8]
+        ['距離実績あり','past_run','{"type":"distance_experience"}',1,1,1],
+        ['同場所実績あり','past_run','{"type":"same_venue_top3"}',2,1,2],
+        ['右回り/左回り実績あり','past_run','{"type":"same_turn_top3"}',1,1,3],
+        ['小回りコース実績あり','past_run','{"type":"small_course_top3"}',1,1,4],
+        ['大箱/外回り系コース実績あり','past_run','{"type":"big_outer_top3"}',1,1,5],
+        ['前走上がり3位以内','past_run','{"type":"last_run_agari_top3"}',1,1,6],
+        ['騎手直近1ヶ月勝率15%以上','jockey','{"type":"recent_win_rate","min":15}',1,1,7],
+        ['重賞5着以内あり','past_run','{"type":"graded_top5"}',1,1,8],
+        ['前走距離延長で3着以内','past_run','{"type":"last_run_distance_up_top3"}',1,1,9],
+        ['前走距離短縮で3着以内','past_run','{"type":"last_run_distance_down_top3"}',1,1,10],
+        ['同条件実績あり','past_run','{"type":"same_condition_top3"}',2,1,11],
+        ['自己条件レース','race_class','{"type":"self_condition"}',3,1,12],
+        ['ハンデ戦斤量補正','weight','{"type":"handicap_light"}',0,1,13],
+        ['距離延長が合いそう（手動判断）','manual_note','{"type":"distance_up_note"}',0,1,14],
+        ['距離短縮が合いそう（手動判断）','manual_note','{"type":"distance_down_note"}',0,1,15],
+        ['脚質バイアス一致','bias','{"type":"style_bias"}',1,1,16],
+        ['期待値あり','odds','{"type":"value"}',1,1,17]
       ];
       for (const r of rules) insertRule.run(...r, nowIso());
     }

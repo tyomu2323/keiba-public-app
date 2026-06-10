@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS race_results (
   corner_3 INTEGER,
   corner_4 INTEGER,
   last_3f REAL,
+  last_3f_rank INTEGER,
   time_text TEXT DEFAULT '',
   time_seconds REAL,
   margin TEXT DEFAULT '',
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS horse_past_runs (
   body_weight_diff INTEGER,
   passing_order TEXT DEFAULT '',
   last_3f REAL,
+  last_3f_rank INTEGER,
   time_text TEXT DEFAULT '',
   time_seconds REAL,
   margin TEXT DEFAULT '',
@@ -274,6 +276,18 @@ CREATE TABLE IF NOT EXISTS horse_scores (
   reason TEXT DEFAULT '',
   updated_at TEXT NOT NULL,
   PRIMARY KEY (race_id, horse_id, category, rule_name)
+);
+
+
+CREATE TABLE IF NOT EXISTS manual_horse_scores (
+  race_id TEXT NOT NULL,
+  horse_id TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'manual',
+  label TEXT NOT NULL DEFAULT '',
+  score REAL NOT NULL DEFAULT 0,
+  reason TEXT DEFAULT '',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (race_id, horse_id, category, label)
 );
 
 CREATE TABLE IF NOT EXISTS odds_snapshots (
