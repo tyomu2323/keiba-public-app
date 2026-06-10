@@ -274,7 +274,13 @@ app.get('/api/admin/races/:id/workout-scoring', requireAdmin, (req, res) => {
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
   `).all(req.params.id);
-  const workouts = db.prepare('SELECT * FROM workouts WHERE race_id=? ORDER BY horse_id, date DESC, id DESC').all(req.params.id);
+  const workoutRows = db.prepare('SELECT * FROM workouts WHERE race_id=? ORDER BY horse_id, date DESC, id DESC').all(req.params.id);
+  const manualRows = db.prepare("SELECT horse_id,label,score,reason FROM manual_horse_scores WHERE race_id=? AND category='workout_manual'").all(req.params.id);
+  const manualMap = new Map(manualRows.map(r => [String(r.label || ''), r]));
+  const workouts = workoutRows.map(w => {
+    const m = manualMap.get(`workout:${w.id}`) || null;
+    return { ...w, manual_score: m ? Number(m.score || 0) : 0, manual_reason: m?.reason || '' };
+  });
   res.json({ race, entries, workouts });
 });
 
@@ -286,7 +292,8 @@ app.post('/api/admin/manual-scores', requireAdmin, (req, res) => {
     ON CONFLICT(race_id,horse_id,category,label) DO UPDATE SET score=excluded.score,reason=excluded.reason,updated_at=excluded.updated_at`)
     .run(race_id, horse_id, category, label, Number(score||0), reason, nowIso());
   calcRuleScoresForRace(race_id);
-  res.json({ ok: true });
+  const workoutManualTotal = db.prepare("SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=? AND category='workout_manual'").get(race_id, horse_id)?.s || 0;
+  res.json({ ok: true, workout_manual_total: Number(workoutManualTotal) });
 });
 
 app.post('/api/admin/biases', requireAdmin, (req, res) => {

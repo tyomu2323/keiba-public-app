@@ -41,7 +41,7 @@ async function deleteRule(id){await fetch('/api/admin/scoring-rules/'+id,{method
 setTimeout(()=>{try{applyRuleTemplate()}catch{}},200);
 
 
-function adminHorseNoBadge(e){const colors={1:'white',2:'black',3:'red',4:'blue',5:'yellow',6:'green',7:'orange',8:'pink'};return `<span class="frame-badge frame-${colors[e.frame_no]||'white'}">${e.frame_no}</span><span class="horse-no">${e.horse_no}</span>`}
+function adminHorseNoBadge(e){return `<span class="frame-badge frame-${Number(e.frame_no)||0}">${e.frame_no||'-'}</span><span class="horse-no frame-${Number(e.frame_no)||0}">${e.horse_no||'-'}</span>`}
 function groupWorkouts(workouts){const g={};for(const w of workouts||[]){if(!g[w.horse_id])g[w.horse_id]=[];g[w.horse_id].push(w)}return g;}
 function adminLap(w){return w.lap_text || [w.total_time,w.furlong_6,w.furlong_5,w.furlong_4,w.furlong_3,w.furlong_2,w.furlong_1].filter(v=>v!==null&&v!==undefined&&v!=='').join('-')}
 async function loadWorkoutScoring(){
@@ -49,11 +49,25 @@ async function loadWorkoutScoring(){
   workoutScoring.innerHTML='読み込み中...';
   const d=await (await fetch('/api/admin/races/'+encodeURIComponent(workoutRaceSelect.value)+'/workout-scoring',{headers:auth()})).json();
   const grouped=groupWorkouts(d.workouts||[]);
-  workoutScoring.innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">各馬の追い切りを見て、タイム横のボタンで感覚評価を保存します。</p>`+
-    (d.entries||[]).map(e=>{const list=(grouped[e.horse_id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));const current=Number(e.workout_manual_score||0);return `<div class="rec workout-admin-card"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill">追切手動 ${current}</span></h3>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th></tr></thead><tbody>${list.map(w=>`<tr><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td><b>${adminLap(w)}</b></td><td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===current?'active':''}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">追い切りデータなし</p>'}<textarea id="wmemo-${e.horse_id}" placeholder="追い切りメモ。例：動き良い、反応鋭い、気持ち前向き">${e.workout_manual_reason||''}</textarea></div>`}).join('');
+  workoutScoring.innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">各馬の追い切りを見て、調教タイムごとに感覚評価を保存します。保存後は該当行だけ更新するので画面が固まりにくくなっています。</p>`+
+    (d.entries||[]).map(e=>{
+      const list=(grouped[e.horse_id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+      const currentTotal=Number(e.workout_manual_score||0);
+      return `<div class="rec workout-admin-card" id="wcard-${e.horse_id}"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill" id="wtotal-${e.horse_id}">追切手動 ${currentTotal}</span></h3>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th><th>メモ</th></tr></thead><tbody>${list.map(w=>{
+        const wc=Number(w.manual_score||0);
+        const rowId=`wrow-${w.id}`;
+        return `<tr id="${rowId}"><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td><b>${adminLap(w)}</b></td><td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===wc?'active':''}" data-workout-id="${w.id}" data-score="${n}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${w.id},${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="wstate-${w.id}"></span></td><td><input class="workout-memo" id="wmemo-${w.id}" placeholder="動き・気配メモ" value="${String(w.manual_reason||'').replaceAll('"','&quot;')}"></td></tr>`
+      }).join('')}</tbody></table></div>`:'<p class="muted">追い切りデータなし</p>'}</div>`
+    }).join('');
 }
-async function saveWorkoutManualScore(raceId,horseId,score,horseName){
-  const memo=document.getElementById('wmemo-'+horseId)?.value || `追い切り感覚評価：${horseName}`;
-  await fetch('/api/admin/manual-scores',{method:'POST',headers:auth(),body:JSON.stringify({race_id:raceId,horse_id:horseId,category:'workout_manual',label:'追い切り感覚評価',score,reason:memo})});
-  loadWorkoutScoring();
+async function saveWorkoutManualScore(raceId,horseId,workoutId,score,horseName){
+  const state=document.getElementById('wstate-'+workoutId);
+  if(state) state.textContent='保存中...';
+  const memo=document.getElementById('wmemo-'+workoutId)?.value || `追い切り感覚評価：${horseName}`;
+  const res=await fetch('/api/admin/manual-scores',{method:'POST',headers:auth(),body:JSON.stringify({race_id:raceId,horse_id:horseId,category:'workout_manual',label:`workout:${workoutId}`,score,reason:memo})});
+  const j=await res.json();
+  document.querySelectorAll(`[data-workout-id="${workoutId}"]`).forEach(btn=>btn.classList.toggle('active', Number(btn.dataset.score)===Number(score)));
+  const total=document.getElementById('wtotal-'+horseId);
+  if(total && j.workout_manual_total!==undefined) total.textContent=`追切手動 ${j.workout_manual_total}`;
+  if(state){state.textContent=j.ok?'保存済み':'エラー'; setTimeout(()=>{state.textContent=''},1200)}
 }
