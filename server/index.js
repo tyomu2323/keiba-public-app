@@ -6,6 +6,7 @@ import { db, nowIso } from './db.js';
 import { requireAdmin, signToken, passwordMatches } from './auth.js';
 import { runFetch } from './services/fetcher.js';
 
+const WEIGHT_BONUS_PER_KG = 0.5;
 
 function raceTurn(venue){
   return ['東京','新潟','中京'].includes(String(venue||'')) ? '左' : '右';
@@ -77,7 +78,7 @@ function calcRuleScoresForRace(raceId){
       if(rule.category==='weight'){
         if(c.type==='handicap_light' && maxWeight>0){
           const diff = maxWeight - Number(e.carried_weight||0);
-          if(diff>0){ ok=true; reason=`斤量補正：最重量${maxWeight}kgから${diff.toFixed(1)}kg軽い（全レース適用）`; }
+          if(diff>0){ ok=true; reason=`斤量補正：最重量${maxWeight}kgから${diff.toFixed(1)}kg軽い × ${WEIGHT_BONUS_PER_KG} = +${(diff*WEIGHT_BONUS_PER_KG).toFixed(1)}（全レース適用）`; }
         }
       }
       if(rule.category==='manual_note'){
@@ -102,7 +103,7 @@ function calcRuleScoresForRace(raceId){
         if(c.type==='value' && Number(e.actual_odds||0)>Number(e.theoretical_odds||999)){ok=true; reason=`実オッズ${e.actual_odds} > 理論${e.theoretical_odds}`;}
       }
       if(ok) {
-        const score = c.type==='handicap_light' ? Math.max(0, Number(((maxWeight - Number(e.carried_weight||0))*0.5).toFixed(1))) : Number(rule.score||0);
+        const score = c.type==='handicap_light' ? Math.max(0, Number(((maxWeight - Number(e.carried_weight||0))*WEIGHT_BONUS_PER_KG).toFixed(1))) : Number(rule.score||0);
         insert.run(raceId,e.horse_id,rule.category,rule.name,score,reason,nowIso());
       }
     }
