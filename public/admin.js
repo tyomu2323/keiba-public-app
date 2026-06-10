@@ -26,7 +26,7 @@ const templates={
  last_run_distance_down_top3:{name:'前走距離短縮で3着以内',category:'past_run',condition:{type:'last_run_distance_down_top3'},score:1},
  same_condition_top3:{name:'同条件実績あり',category:'past_run',condition:{type:'same_condition_top3'},score:2},
  self_condition:{name:'自己条件レース',category:'race_class',condition:{type:'self_condition'},score:3},
- handicap_light:{name:'ハンデ戦斤量補正',category:'weight',condition:{type:'handicap_light'},score:0},
+ handicap_light:{name:'斤量補正（全レース適用）',category:'weight',condition:{type:'handicap_light'},score:0},
  distance_up_note:{name:'距離延長が合いそう（手動判断）',category:'manual_note',condition:{type:'distance_up_note'},score:0},
  distance_down_note:{name:'距離短縮が合いそう（手動判断）',category:'manual_note',condition:{type:'distance_down_note'},score:0},
  style_bias:{name:'脚質バイアス一致',category:'bias',condition:{type:'style_bias'},score:1},
@@ -53,7 +53,8 @@ async function loadWorkoutScoring(){
     (d.entries||[]).map(e=>{
       const list=(grouped[e.horse_id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
       const currentTotal=Number(e.workout_manual_score||0);
-      return `<div class="rec workout-admin-card" id="wcard-${e.horse_id}"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill" id="wtotal-${e.horse_id}">追切手動 ${currentTotal}</span></h3>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th><th>メモ</th></tr></thead><tbody>${list.map(w=>{
+      const distanceTotal=Number(e.distance_fit_manual_score||0);
+      return `<div class="rec workout-admin-card" id="wcard-${e.horse_id}"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill" id="wtotal-${e.horse_id}">追切手動 ${currentTotal}</span><span class="score-pill" id="dtotal-${e.horse_id}">距離適性手動 ${distanceTotal}</span></h3><div class="horse-manual-panel"><b>距離延長/短縮の目視判断</b><span class="muted">馬ごとに保存。基準0点。</span><div class="row compact-row"><span>距離延長が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_up_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_up_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_up_fit',${n},'距離延長が合いそう')">${n>0?'+':''}${n}</button>`).join('')}</div><div class="row compact-row"><span>距離短縮が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_down_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_down_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_down_fit',${n},'距離短縮が合いそう')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="dstate-${e.horse_id}"></span></div></div>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th><th>メモ</th></tr></thead><tbody>${list.map(w=>{
         const wc=Number(w.manual_score||0);
         const rowId=`wrow-${w.id}`;
         return `<tr id="${rowId}"><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td><b>${adminLap(w)}</b></td><td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===wc?'active':''}" data-workout-id="${w.id}" data-score="${n}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${w.id},${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="wstate-${w.id}"></span></td><td><input class="workout-memo" id="wmemo-${w.id}" placeholder="動き・気配メモ" value="${String(w.manual_reason||'').replaceAll('"','&quot;')}"></td></tr>`
@@ -69,5 +70,16 @@ async function saveWorkoutManualScore(raceId,horseId,workoutId,score,horseName){
   document.querySelectorAll(`[data-workout-id="${workoutId}"]`).forEach(btn=>btn.classList.toggle('active', Number(btn.dataset.score)===Number(score)));
   const total=document.getElementById('wtotal-'+horseId);
   if(total && j.workout_manual_total!==undefined) total.textContent=`追切手動 ${j.workout_manual_total}`;
+  if(state){state.textContent=j.ok?'保存済み':'エラー'; setTimeout(()=>{state.textContent=''},1200)}
+}
+
+async function saveDistanceFitManualScore(raceId,horseId,label,score,reason){
+  const state=document.getElementById('dstate-'+horseId);
+  if(state) state.textContent='保存中...';
+  const res=await fetch('/api/admin/manual-scores',{method:'POST',headers:auth(),body:JSON.stringify({race_id:raceId,horse_id:horseId,category:'distance_fit_manual',label,score,reason})});
+  const j=await res.json();
+  document.querySelectorAll(`[data-distance-horse="${horseId}"][data-distance-label="${label}"]`).forEach(btn=>btn.classList.toggle('active', Number(btn.dataset.score)===Number(score)));
+  const total=document.getElementById('dtotal-'+horseId);
+  if(total && j.distance_fit_manual_total!==undefined) total.textContent=`距離適性手動 ${j.distance_fit_manual_total}`;
   if(state){state.textContent=j.ok?'保存済み':'エラー'; setTimeout(()=>{state.textContent=''},1200)}
 }

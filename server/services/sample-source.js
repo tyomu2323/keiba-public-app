@@ -80,7 +80,8 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         const expectedWinRate = Number((Math.max(3, 24 - i * 2.3)).toFixed(1));
         const theoretical = Number((100 / expectedWinRate).toFixed(1));
         const actual = Number((theoretical * (i % 2 === 0 ? 1.45 : 0.86)).toFixed(1));
-        insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', 57, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
+        const sampleWeight = [58,57.5,57,56,55.5,55,54,52][i % 8];
+        insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', sampleWeight, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
         const isTop = i === 0;
         for (let widx = 0; widx < 3; widx++) {
           const percentile = i === 0 && widx === 0 ? 0.12 : i === 1 && widx === 0 ? 0.22 : 0.38 + i * 0.04 + widx * 0.02;
@@ -92,7 +93,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         }
 
         for (let p = 1; p <= 5; p++) {
-          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山','小倉'][p%4], p===3 ? `G3 過去サンプル${p}` : `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', p===3 ? 'G3' : '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], 57, 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), Math.min(8, i+p), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
+          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山','小倉'][p%4], p===3 ? `G3 過去サンプル${p}` : `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', p===3 ? 'G3' : '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], [58,57.5,57,56,55.5,55,54,52][i % 8], 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), Math.min(8, i+p), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
         }
       }
     }
@@ -157,7 +158,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         ['前走距離短縮で3着以内','past_run','{"type":"last_run_distance_down_top3"}',1,1,10],
         ['同条件実績あり','past_run','{"type":"same_condition_top3"}',2,1,11],
         ['自己条件レース','race_class','{"type":"self_condition"}',3,1,12],
-        ['ハンデ戦斤量補正','weight','{"type":"handicap_light"}',0,1,13],
+        ['斤量補正（全レース適用）','weight','{"type":"handicap_light"}',0,1,13],
         ['距離延長が合いそう（手動判断）','manual_note','{"type":"distance_up_note"}',0,1,14],
         ['距離短縮が合いそう（手動判断）','manual_note','{"type":"distance_down_note"}',0,1,15],
         ['脚質バイアス一致','bias','{"type":"style_bias"}',1,1,16],

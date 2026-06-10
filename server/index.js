@@ -75,9 +75,9 @@ function calcRuleScoresForRace(raceId){
         if(c.type==='self_condition' && isSelfConditionRace(race)){ok=true; reason='自己条件レース';}
       }
       if(rule.category==='weight'){
-        if(c.type==='handicap_light' && isHandicapRace(race) && maxWeight>0){
+        if(c.type==='handicap_light' && maxWeight>0){
           const diff = maxWeight - Number(e.carried_weight||0);
-          if(diff>0){ ok=true; reason=`ハンデ戦斤量補正：最重量${maxWeight}kgから${diff.toFixed(1)}kg軽い`; }
+          if(diff>0){ ok=true; reason=`斤量補正：最重量${maxWeight}kgから${diff.toFixed(1)}kg軽い（全レース適用）`; }
         }
       }
       if(rule.category==='manual_note'){
@@ -102,7 +102,7 @@ function calcRuleScoresForRace(raceId){
         if(c.type==='value' && Number(e.actual_odds||0)>Number(e.theoretical_odds||999)){ok=true; reason=`実オッズ${e.actual_odds} > 理論${e.theoretical_odds}`;}
       }
       if(ok) {
-        const score = c.type==='handicap_light' && isHandicapRace(race) ? Number(((maxWeight - Number(e.carried_weight||0))*0.5).toFixed(1)) : Number(rule.score||0);
+        const score = c.type==='handicap_light' ? Math.max(0, Number(((maxWeight - Number(e.carried_weight||0))*0.5).toFixed(1))) : Number(rule.score||0);
         insert.run(raceId,e.horse_id,rule.category,rule.name,score,reason,nowIso());
       }
     }
@@ -270,6 +270,9 @@ app.get('/api/admin/races/:id/workout-scoring', requireAdmin, (req, res) => {
   const entries = db.prepare(`
     SELECT e.*, h.name,
       COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='workout_manual'),0) workout_manual_score,
+      COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='distance_fit_manual'),0) distance_fit_manual_score,
+      COALESCE((SELECT score FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='distance_fit_manual' AND ms.label='distance_up_fit' LIMIT 1),0) distance_up_fit_score,
+      COALESCE((SELECT score FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='distance_fit_manual' AND ms.label='distance_down_fit' LIMIT 1),0) distance_down_fit_score,
       COALESCE((SELECT reason FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='workout_manual' ORDER BY updated_at DESC LIMIT 1),'') workout_manual_reason
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
@@ -293,7 +296,10 @@ app.post('/api/admin/manual-scores', requireAdmin, (req, res) => {
     .run(race_id, horse_id, category, label, Number(score||0), reason, nowIso());
   calcRuleScoresForRace(race_id);
   const workoutManualTotal = db.prepare("SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=? AND category='workout_manual'").get(race_id, horse_id)?.s || 0;
-  res.json({ ok: true, workout_manual_total: Number(workoutManualTotal) });
+  const distanceFitManualTotal = db.prepare("SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=? AND category='distance_fit_manual'").get(race_id, horse_id)?.s || 0;
+  const manualTotal = db.prepare("SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=?").get(race_id, horse_id)?.s || 0;
+  const entryScore = db.prepare("SELECT score FROM entries WHERE race_id=? AND horse_id=?").get(race_id, horse_id)?.score || 0;
+  res.json({ ok: true, workout_manual_total: Number(workoutManualTotal), distance_fit_manual_total: Number(distanceFitManualTotal), manual_total: Number(manualTotal), entry_score: Number(entryScore) });
 });
 
 app.post('/api/admin/biases', requireAdmin, (req, res) => {
