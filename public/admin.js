@@ -6,8 +6,41 @@ async function manualFetch(){fetchResult.textContent='取得中...';const res=aw
 async function loadRaces(){const j=await (await fetch('/api/races')).json();races=j.races;raceSelect.innerHTML=races.map(r=>`<option value="${r.id}">${r.date} ${r.venue}${r.race_no}R ${r.name}</option>`).join('');workoutRaceSelect.innerHTML=raceSelect.innerHTML;raceSelect.onchange=loadHorses;loadHorses();renderBiasVenueButtons();}
 function renderBiasVenueButtons(){const venues=[...new Set(races.map(r=>r.venue))];biasVenueButtons.innerHTML=venues.map(v=>`<button onclick="setBiasVenue('${v}')">${v}</button>`).join('');if(venues.length&&!biasVenue.value)biasVenue.value=venues[0];if(races[0]&&!biasDate.value)biasDate.value=races[0].date;}
 function setBiasVenue(v){biasVenue.value=v;}
-async function loadHorses(){if(!raceSelect.value)return;const d=await (await fetch('/api/races/'+encodeURIComponent(raceSelect.value))).json();horseSelect.innerHTML=d.entries.map(e=>`<option value="${e.horse_id}">${e.frame_no}枠 ${e.horse_no}番 ${e.name} / ${e.running_style||'脚質未入力'}</option>`).join('');}
-async function saveRecommendation(){const body={race_id:raceSelect.value,horse_id:horseSelect.value,mark:mark.value,confidence:+confidence.value,reason:reason.value,bet_note:betNote.value,add_score:+addScore.value};const res=await fetch('/api/admin/recommendations',{method:'POST',headers:auth(),body:JSON.stringify(body)});recMsg.textContent=JSON.stringify(await res.json());}
+async function loadHorses(){
+  if(!raceSelect.value)return;
+  const d=await (await fetch('/api/races/'+encodeURIComponent(raceSelect.value))).json();
+  horseSelect.innerHTML=d.entries.map(e=>`<option value="${e.horse_id}">${e.frame_no}枠 ${e.horse_no}番 ${e.name} / ${e.running_style||'脚質未入力'}</option>`).join('');
+  renderMarkBoard(d);
+}
+async function saveRecommendation(){const body={race_id:raceSelect.value,horse_id:horseSelect.value,mark:mark.value,confidence:+confidence.value,reason:reason.value,bet_note:betNote.value,add_score:+addScore.value};const res=await fetch('/api/admin/recommendations',{method:'POST',headers:auth(),body:JSON.stringify(body)});recMsg.textContent=JSON.stringify(await res.json());loadHorses();}
+function adminStyleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
+function adminScoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
+function adminMarkButtons(raceId,e){
+  const marks=['◎','○','▲','△','☆','消'];
+  return marks.map(m=>`<button class="mark-mini ${String(e.mark||'')===m?'active':''}" onclick="saveRecommendationForHorse('${raceId}','${e.horse_id}','${m}')">${m}</button>`).join('');
+}
+function renderMarkBoard(d){
+  const entries=d.entries||[];
+  markBoard.innerHTML=`<div class="table-wrap"><table class="newspaper admin-mark-table"><thead><tr><th>枠/馬</th><th>印</th><th>馬名</th><th>脚質</th><th>騎手</th><th>斤量</th><th>自動</th><th>手動</th><th>総合</th><th>現在</th></tr></thead><tbody>${entries.map(e=>{
+    const total=Number(e.total_score||0);
+    return `<tr id="mark-row-${e.horse_id}"><td>${adminHorseNoBadge(e)}</td><td class="mark-buttons">${adminMarkButtons(d.race.id,e)}</td><td><b>${e.name}</b></td><td>${adminStyleBadge(e.running_style)}</td><td>${e.jockey||''}</td><td>${e.weight_carried??'-'}</td><td>${Number(e.auto_score||0)}</td><td>${Number(e.manual_score||0)}</td><td><span class="score-pill ${adminScoreClass(total)}">${total}</span></td><td class="current-mark" id="current-mark-${e.horse_id}">${e.mark||'-'}</td></tr>`
+  }).join('')}</tbody></table></div>`;
+}
+async function saveRecommendationForHorse(raceId,horseId,selectedMark){
+  const row=document.getElementById('mark-row-'+horseId);
+  if(row) row.classList.add('saving');
+  const body={race_id:raceId,horse_id:horseId,mark:selectedMark,confidence:+confidence.value||3,reason:reason.value,bet_note:betNote.value,add_score:+addScore.value||0};
+  const res=await fetch('/api/admin/recommendations',{method:'POST',headers:auth(),body:JSON.stringify(body)});
+  const j=await res.json();
+  if(j.ok){
+    document.getElementById('current-mark-'+horseId).textContent=selectedMark;
+    document.querySelectorAll(`#mark-row-${horseId} .mark-mini`).forEach(b=>b.classList.toggle('active',b.textContent===selectedMark));
+    recMsg.textContent=`${selectedMark} を保存しました`;
+  }else{
+    recMsg.textContent=JSON.stringify(j);
+  }
+  if(row){row.classList.remove('saving');row.classList.add('saved-flash');setTimeout(()=>row.classList.remove('saved-flash'),700)}
+}
 async function saveWatchHorse(){const body={horse_name:watchHorseName.value,alert_condition:watchMark.value,note:watchNote.value};const res=await fetch('/api/admin/watch-horses',{method:'POST',headers:auth(),body:JSON.stringify(body)});watchMsg.textContent=JSON.stringify(await res.json());watchHorseName.value='';watchNote.value='';loadWatchHorses();loadScoringRules();}
 async function loadWatchHorses(){const j=await (await fetch('/api/watch-horses')).json();watchList.innerHTML=(j.watch_horses||[]).map(r=>`<div class="rec"><div class="mark">${r.alert_condition||'注目'} ${r.horse_name}</div>${r.race_id?`<b>出走中：${r.venue}${r.race_no}R ${r.race_name}</b>`:'<b>出走予定なし</b>'}<p>${r.note||''}</p></div>`).join('')||'登録馬はまだありません。';}
 async function saveBias(){const body={date:biasDate.value,venue:biasVenue.value,surface:biasSurface.value,inside:+inside.value||0,outside:+outside.value||0,front:+front.value||0,stalker:+stalker.value||0,closer:+closer.value||0,deep_closer:+deepCloser.value||0,comment:biasComment.value};const res=await fetch('/api/admin/biases',{method:'POST',headers:auth(),body:JSON.stringify(body)});biasMsg.textContent=JSON.stringify(await res.json());}
