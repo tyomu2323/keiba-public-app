@@ -55,6 +55,9 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
   const insertPastRun = db.prepare(`INSERT INTO horse_past_runs
     (horse_id,date,venue,race_name,surface,distance,going,class_name,frame_no,horse_no,finish_position,popularity,odds,jockey,carried_weight,body_weight,body_weight_diff,passing_order,last_3f,last_3f_rank,time_text,time_seconds,margin,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const insertResult = db.prepare(`INSERT OR REPLACE INTO race_results
+    (race_id,horse_id,finish_position,popularity,odds,frame_no,horse_no,jockey,passing_order,last_3f,last_3f_rank,time_text,time_seconds,margin,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insertJockeyStat = db.prepare(`INSERT OR REPLACE INTO jockey_stats
     (jockey,period_type,date_from,date_to,venue,surface,distance,starts,wins,seconds,thirds,fourths,fifths_or_worse,win_rate,place2_rate,place3_rate,win_return_rate,place_return_rate,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -67,6 +70,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
     for (const r of races) insertRace.run({ ...r, updated_at: nowIso() });
     for (const [id, name] of horses) insertHorse.run(id, name, id.endsWith('1') ? '牡' : '牝', 2021, 'サンプル厩舎', nowIso());
     db.prepare('DELETE FROM workouts').run();
+    db.prepare('DELETE FROM race_results').run();
     db.prepare('DELETE FROM horse_past_runs').run();
     db.prepare('DELETE FROM jockey_stats').run();
     db.prepare('DELETE FROM course_trends').run();
@@ -82,6 +86,9 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         const actual = Number((theoretical * (i % 2 === 0 ? 1.45 : 0.86)).toFixed(1));
         const sampleWeight = [58,57.5,57,56,55.5,55,54,52][i % 8];
         insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', sampleWeight, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
+        const finish = ((i + r.race_no) % 8) + 1;
+        const last3fRank = ((i * 2 + r.race_no) % 8) + 1;
+        insertResult.run(r.id, h[0], finish, i+1, actual, Math.ceil(horseNo/2), horseNo, jockeys[i], `${2+i}-${3+i}-${4+i}`, Number((33.8+i/10).toFixed(1)), last3fRank, `1:${33+i}.0`, 93+i, finish===1?'0.0':`${(finish/10).toFixed(1)}`, nowIso());
         const isTop = i === 0;
         for (let widx = 0; widx < 3; widx++) {
           const percentile = i === 0 && widx === 0 ? 0.12 : i === 1 && widx === 0 ? 0.22 : 0.38 + i * 0.04 + widx * 0.02;

@@ -8,6 +8,45 @@ import { runFetch } from './services/fetcher.js';
 
 const WEIGHT_BONUS_PER_KG = 0.5;
 
+function estimatedPlaceOdds(winOdds){
+  const o = Number(winOdds || 0);
+  if(!o) return 0;
+  return Number(Math.max(1.1, o / 3).toFixed(1));
+}
+function validationStats(rows){
+  const out = { count: rows.length, first:0, second:0, third:0, fourth_or_worse:0, win_return_rate:0, place_return_rate:0 };
+  if(!rows.length) return out;
+  let winReturn = 0, placeReturn = 0;
+  for(const r of rows){
+    const finish = Number(r.finish_position || 99);
+    if(finish === 1){ out.first++; winReturn += Number(r.odds || r.actual_odds || 0) * 100; }
+    else if(finish === 2) out.second++;
+    else if(finish === 3) out.third++;
+    else out.fourth_or_worse++;
+    if(finish <= 3) placeReturn += estimatedPlaceOdds(r.odds || r.actual_odds) * 100;
+  }
+  out.win_return_rate = Number((winReturn / (rows.length * 100) * 100).toFixed(1));
+  out.place_return_rate = Number((placeReturn / (rows.length * 100) * 100).toFixed(1));
+  out.record = `${out.first}-${out.second}-${out.third}-${out.fourth_or_worse}`;
+  return out;
+}
+function rankedScoreRows(rankNo){
+  const races = db.prepare('SELECT id FROM races ORDER BY date, venue, race_no').all();
+  const rows = [];
+  for(const race of races){
+    const entries = db.prepare(`
+      SELECT e.race_id,e.horse_id,e.score,e.actual_odds,rr.finish_position,rr.odds
+      FROM entries e
+      JOIN race_results rr ON rr.race_id=e.race_id AND rr.horse_id=e.horse_id
+      WHERE e.race_id=?
+      ORDER BY e.score DESC, e.actual_odds ASC, e.horse_no ASC
+    `).all(race.id);
+    if(entries[rankNo-1]) rows.push(entries[rankNo-1]);
+  }
+  return rows;
+}
+
+
 function raceTurn(venue){
   return ['東京','新潟','中京'].includes(String(venue||'')) ? '左' : '右';
 }
@@ -227,6 +266,29 @@ app.post('/api/admin/fetch', requireAdmin, async (req, res) => {
 app.get('/api/admin/logs', requireAdmin, (req, res) => {
   res.json({ logs: db.prepare('SELECT * FROM fetch_logs ORDER BY id DESC LIMIT 50').all() });
 });
+
+app.get('/api/admin/validation', requireAdmin, (req, res) => {
+  const workoutPlus3Rows = db.prepare(`
+    SELECT * FROM (
+      SELECT e.race_id,e.horse_id,e.actual_odds,rr.finish_position,rr.odds,
+        COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id AND ms.category='workout_manual'),0) workout_manual_score
+      FROM entries e
+      JOIN race_results rr ON rr.race_id=e.race_id AND rr.horse_id=e.horse_id
+    ) x
+    WHERE workout_manual_score >= 3
+  `).all();
+  const rank1 = rankedScoreRows(1);
+  const rank2 = rankedScoreRows(2);
+  const rank3 = rankedScoreRows(3);
+  res.json({
+    note: '複勝回収率はサンプルでは単勝オッズからの暫定推定です。JRA-VAN結果払戻データ接続後は実払戻で計算します。',
+    workout_plus3: validationStats(workoutPlus3Rows),
+    score_rank_1: validationStats(rank1),
+    score_rank_2: validationStats(rank2),
+    score_rank_3: validationStats(rank3)
+  });
+});
+
 
 app.get('/api/watch-horses', (req, res) => {
   const rows = db.prepare(`

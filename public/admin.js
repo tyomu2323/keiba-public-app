@@ -1,7 +1,7 @@
 let token=localStorage.getItem('adminToken')||'';let races=[];
 function auth(){return {Authorization:'Bearer '+token,'Content-Type':'application/json'}}
 async function login(){const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user.value,password:pass.value})});const j=await res.json();if(j.token){token=j.token;localStorage.setItem('adminToken',token);showAdmin();}else loginMsg.textContent=j.error||'失敗';}
-function showAdmin(){document.querySelectorAll('.admin-only').forEach(e=>e.classList.remove('hidden'));loginBox.classList.add('hidden');loadRaces();loadLogs();loadWatchHorses();loadScoringRules();}
+function showAdmin(){document.querySelectorAll('.admin-only').forEach(e=>e.classList.remove('hidden'));loginBox.classList.add('hidden');loadRaces();loadLogs();loadWatchHorses();loadScoringRules();loadValidation();}
 async function manualFetch(){fetchResult.textContent='取得中...';const res=await fetch('/api/admin/fetch',{method:'POST',headers:auth(),body:JSON.stringify({mode:'manual',target:target.value,dateFrom:dateFrom.value,dateTo:dateTo.value})});fetchResult.textContent=JSON.stringify(await res.json(),null,2);loadRaces();loadLogs();loadWatchHorses();loadScoringRules();}
 async function loadRaces(){const j=await (await fetch('/api/races')).json();races=j.races;raceSelect.innerHTML=races.map(r=>`<option value="${r.id}">${r.date} ${r.venue}${r.race_no}R ${r.name}</option>`).join('');workoutRaceSelect.innerHTML=raceSelect.innerHTML;raceSelect.onchange=loadHorses;loadHorses();renderBiasVenueButtons();}
 function renderBiasVenueButtons(){const venues=[...new Set(races.map(r=>r.venue))];biasVenueButtons.innerHTML=venues.map(v=>`<button onclick="setBiasVenue('${v}')">${v}</button>`).join('');if(venues.length&&!biasVenue.value)biasVenue.value=venues[0];if(races[0]&&!biasDate.value)biasDate.value=races[0].date;}
@@ -44,20 +44,53 @@ setTimeout(()=>{try{applyRuleTemplate()}catch{}},200);
 function adminHorseNoBadge(e){return `<span class="frame-badge frame-${Number(e.frame_no)||0}">${e.frame_no||'-'}</span><span class="horse-no frame-${Number(e.frame_no)||0}">${e.horse_no||'-'}</span>`}
 function groupWorkouts(workouts){const g={};for(const w of workouts||[]){if(!g[w.horse_id])g[w.horse_id]=[];g[w.horse_id].push(w)}return g;}
 function adminLap(w){return w.lap_text || [w.total_time,w.furlong_6,w.furlong_5,w.furlong_4,w.furlong_3,w.furlong_2,w.furlong_1].filter(v=>v!==null&&v!==undefined&&v!=='').join('-')}
+function adminWorkoutIntensityGroup(i){return String(i||'').includes('馬なり')?'easy':'hard'}
+function adminRankClasses(workouts){
+  const keys=['total_time','furlong_6','furlong_5','furlong_4','furlong_3','furlong_2','furlong_1'];
+  const map={};
+  for(const key of keys){
+    for(const group of ['easy','hard']){
+      const rows=(workouts||[]).filter(w=>adminWorkoutIntensityGroup(w.intensity)===group && Number(w[key])>0).sort((a,b)=>Number(a[key])-Number(b[key]));
+      rows.forEach((w,idx)=>{const p=(idx+1)/rows.length;map[`${w.id}:${key}`]=p<=0.15?(group==='easy'?'easy15':'hard15'):p<=0.25?(group==='easy'?'easy25':'hard25'):'';});
+    }
+  }
+  return map;
+}
+function adminBestMarks(list){
+  const keys=['total_time','furlong_6','furlong_5','furlong_4','furlong_3','furlong_2','furlong_1'];
+  const best={};
+  for(const key of keys){const vals=(list||[]).filter(w=>Number(w[key])>0).map(w=>Number(w[key])); if(vals.length) best[key]=Math.min(...vals)}
+  const out={};
+  for(const w of list||[]){for(const key of keys){if(best[key]!==undefined && Number(w[key])===best[key]) out[`${w.id}:${key}`]='🏆'}}
+  return out;
+}
+function adminLapValue(w,key){const v=w[key]; return v===null||v===undefined||v===''?'':Number(v).toFixed(1).replace(/\.0$/,'')}
+function adminLapCell(w,key,rank,best){const v=adminLapValue(w,key); if(!v)return '<td class="muted">-</td>'; const cls=rank[`${w.id}:${key}`]||''; const mark=best[`${w.id}:${key}`]||''; return `<td class="lap ${cls}">${mark}<b>${v}</b></td>`}
+function adminWorkoutLegend(){return `<div class="workout-legend"><span class="legend easy25">馬なり25%</span><span class="legend easy15">馬なり15%</span><span class="legend hard25">強め/一杯25%</span><span class="legend hard15">強め/一杯15%</span><span class="legend best">🏆 ベストタイム</span></div>`}
+function validationCard(title, row){row=row||{};return `<div class="stat-card validation-card"><b>${title}</b><p class="finish-line">${row.record||'0-0-0-0'}</p><p>対象：${row.count||0}頭</p><p>単勝回収率：<b>${row.win_return_rate||0}%</b></p><p>複勝回収率：<b>${row.place_return_rate||0}%</b></p></div>`}
+async function loadValidation(){
+  if(!token || !window.validationResult) return;
+  validationResult.innerHTML='読み込み中...';
+  const res=await fetch('/api/admin/validation',{headers:auth()});
+  const j=await res.json();
+  validationResult.innerHTML=`<p class="muted">${j.note||''}</p><div class="stat-grid">${validationCard('追い切り+3以上',j.workout_plus3)}${validationCard('総合点1位',j.score_rank_1)}${validationCard('総合点2位',j.score_rank_2)}${validationCard('総合点3位',j.score_rank_3)}</div>`;
+}
 async function loadWorkoutScoring(){
   if(!workoutRaceSelect.value){workoutScoring.innerHTML='レースがありません';return;}
   workoutScoring.innerHTML='読み込み中...';
   const d=await (await fetch('/api/admin/races/'+encodeURIComponent(workoutRaceSelect.value)+'/workout-scoring',{headers:auth()})).json();
   const grouped=groupWorkouts(d.workouts||[]);
-  workoutScoring.innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">各馬の追い切りを見て、調教タイムごとに感覚評価を保存します。保存後は該当行だけ更新するので画面が固まりにくくなっています。</p>`+
+  const rank=adminRankClasses(d.workouts||[]);
+  workoutScoring.innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">各馬の追い切りを見て、調教タイムごとに感覚評価を保存します。保存後は該当行だけ更新するので画面が固まりにくくなっています。</p>${adminWorkoutLegend()}`+
     (d.entries||[]).map(e=>{
       const list=(grouped[e.horse_id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
       const currentTotal=Number(e.workout_manual_score||0);
       const distanceTotal=Number(e.distance_fit_manual_score||0);
-      return `<div class="rec workout-admin-card" id="wcard-${e.horse_id}"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill" id="wtotal-${e.horse_id}">追切手動 ${currentTotal}</span><span class="score-pill" id="dtotal-${e.horse_id}">距離適性手動 ${distanceTotal}</span></h3><div class="horse-manual-panel"><b>距離延長/短縮の目視判断</b><span class="muted">馬ごとに保存。基準0点。</span><div class="row compact-row"><span>距離延長が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_up_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_up_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_up_fit',${n},'距離延長が合いそう')">${n>0?'+':''}${n}</button>`).join('')}</div><div class="row compact-row"><span>距離短縮が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_down_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_down_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_down_fit',${n},'距離短縮が合いそう')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="dstate-${e.horse_id}"></span></div></div>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>タイム</th><th>評価</th><th>手動加点</th><th>メモ</th></tr></thead><tbody>${list.map(w=>{
+      const best=adminBestMarks(list);
+      return `<div class="rec workout-admin-card" id="wcard-${e.horse_id}"><h3>${adminHorseNoBadge(e)} ${e.name} <span class="score-pill" id="wtotal-${e.horse_id}">追切手動 ${currentTotal}</span><span class="score-pill" id="dtotal-${e.horse_id}">距離適性手動 ${distanceTotal}</span></h3><div class="horse-manual-panel"><b>距離延長/短縮の目視判断</b><span class="muted">馬ごとに保存。基準0点。</span><div class="row compact-row"><span>距離延長が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_up_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_up_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_up_fit',${n},'距離延長が合いそう')">${n>0?'+':''}${n}</button>`).join('')}</div><div class="row compact-row"><span>距離短縮が合いそう</span>${[0,1,2,3].map(n=>`<button class="mini-btn ${n===Number(e.distance_down_fit_score||0)?'active':''}" data-distance-horse="${e.horse_id}" data-distance-label="distance_down_fit" data-score="${n}" onclick="saveDistanceFitManualScore('${d.race.id}','${e.horse_id}','distance_down_fit',${n},'距離短縮が合いそう')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="dstate-${e.horse_id}"></span></div></div>${list.length?`<div class="table-wrap"><table class="compact"><thead><tr><th>日付</th><th>調教コース</th><th>強度</th><th>全体</th><th>6F</th><th>5F</th><th>4F</th><th>3F</th><th>2F</th><th>1F</th><th>評価</th><th>手動加点</th><th>メモ</th></tr></thead><tbody>${list.map(w=>{
         const wc=Number(w.manual_score||0);
         const rowId=`wrow-${w.id}`;
-        return `<tr id="${rowId}"><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td><td><b>${adminLap(w)}</b></td><td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===wc?'active':''}" data-workout-id="${w.id}" data-score="${n}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${w.id},${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="wstate-${w.id}"></span></td><td><input class="workout-memo" id="wmemo-${w.id}" placeholder="動き・気配メモ" value="${String(w.manual_reason||'').replaceAll('"','&quot;')}"></td></tr>`
+        return `<tr id="${rowId}"><td>${w.date||''}</td><td>${w.course||''}</td><td>${w.intensity||''}</td>${adminLapCell(w,'total_time',rank,best)}${adminLapCell(w,'furlong_6',rank,best)}${adminLapCell(w,'furlong_5',rank,best)}${adminLapCell(w,'furlong_4',rank,best)}${adminLapCell(w,'furlong_3',rank,best)}${adminLapCell(w,'furlong_2',rank,best)}${adminLapCell(w,'furlong_1',rank,best)}<td>${w.top15_flag?'上位15%':w.top25_flag?'上位25%':''}</td><td>${[-3,-2,-1,0,1,2,3,4,5].map(n=>`<button class="mini-btn ${n===wc?'active':''}" data-workout-id="${w.id}" data-score="${n}" onclick="saveWorkoutManualScore('${d.race.id}','${e.horse_id}',${w.id},${n},'${String(e.name).replaceAll("'","\\'")}')">${n>0?'+':''}${n}</button>`).join('')}<span class="save-state" id="wstate-${w.id}"></span></td><td><input class="workout-memo" id="wmemo-${w.id}" placeholder="動き・気配メモ" value="${String(w.manual_reason||'').replaceAll('"','&quot;')}"></td></tr>`
       }).join('')}</tbody></table></div>`:'<p class="muted">追い切りデータなし</p>'}</div>`
     }).join('');
 }
