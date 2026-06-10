@@ -12,7 +12,7 @@ async function loadHorses(){
   horseSelect.innerHTML=d.entries.map(e=>`<option value="${e.horse_id}">${e.frame_no}枠 ${e.horse_no}番 ${e.name} / ${e.running_style||'脚質未入力'}</option>`).join('');
   renderMarkBoard(d);
 }
-async function saveRecommendation(){const body={race_id:raceSelect.value,horse_id:horseSelect.value,mark:mark.value,confidence:+confidence.value,reason:reason.value,bet_note:betNote.value,add_score:+addScore.value};const res=await fetch('/api/admin/recommendations',{method:'POST',headers:auth(),body:JSON.stringify(body)});recMsg.textContent=JSON.stringify(await res.json());loadHorses();}
+async function saveRecommendation(){const body={race_id:raceSelect.value,horse_id:horseSelect.value,mark:mark.value};const res=await fetch('/api/admin/marks',{method:'POST',headers:auth(),body:JSON.stringify(body)});recMsg.textContent=JSON.stringify(await res.json());loadHorses();}
 function adminStyleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
 function adminScoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
 function adminMarkButtons(raceId,e){
@@ -29,19 +29,34 @@ function renderMarkBoard(d){
 async function saveRecommendationForHorse(raceId,horseId,selectedMark){
   const row=document.getElementById('mark-row-'+horseId);
   if(row) row.classList.add('saving');
-  const body={race_id:raceId,horse_id:horseId,mark:selectedMark,confidence:+confidence.value||3,reason:reason.value,bet_note:betNote.value,add_score:+addScore.value||0};
-  const res=await fetch('/api/admin/recommendations',{method:'POST',headers:auth(),body:JSON.stringify(body)});
+  const body={race_id:raceId,horse_id:horseId,mark:selectedMark};
+  const res=await fetch('/api/admin/marks',{method:'POST',headers:auth(),body:JSON.stringify(body)});
   const j=await res.json();
   if(j.ok){
     document.getElementById('current-mark-'+horseId).textContent=selectedMark;
     document.querySelectorAll(`#mark-row-${horseId} .mark-mini`).forEach(b=>b.classList.toggle('active',b.textContent===selectedMark));
-    recMsg.textContent=`${selectedMark} を保存しました`;
+    recMsg.textContent=`${selectedMark} を保存しました（加点なし・おすすめ馬とは別）`;
   }else{
     recMsg.textContent=JSON.stringify(j);
   }
   if(row){row.classList.remove('saving');row.classList.add('saved-flash');setTimeout(()=>row.classList.remove('saved-flash'),700)}
 }
-async function saveWatchHorse(){const body={horse_name:watchHorseName.value,alert_condition:watchMark.value,note:watchNote.value};const res=await fetch('/api/admin/watch-horses',{method:'POST',headers:auth(),body:JSON.stringify(body)});watchMsg.textContent=JSON.stringify(await res.json());watchHorseName.value='';watchNote.value='';loadWatchHorses();loadScoringRules();}
+async function searchWatchHorseCandidates(){
+  const q=(watchHorseSearch?.value||watchHorseName?.value||'').trim();
+  const j=await (await fetch('/api/admin/horses/search?q='+encodeURIComponent(q),{headers:auth()})).json();
+  watchHorseSelect.innerHTML=(j.horses||[]).map(h=>`<option value="${h.id}">${h.name}${h.sire?` / 父:${h.sire}`:''}${h.dam_sire?` / 母父:${h.dam_sire}`:''}</option>`).join('');
+  watchMsg.textContent=(j.horses||[]).length?'候補を表示しました':'候補が見つかりません。直接馬名入力でも登録できます。';
+}
+async function saveWatchHorse(){
+  const selected=watchHorseSelect?.value||'';
+  const direct=(watchHorseName?.value||'').trim();
+  const body={horse_id:selected,horse_name:direct,alert_condition:watchMark.value,note:watchNote.value};
+  const res=await fetch('/api/admin/watch-horses',{method:'POST',headers:auth(),body:JSON.stringify(body)});
+  const j=await res.json();
+  watchMsg.textContent=JSON.stringify(j);
+  if(j.ok){watchHorseName.value='';watchNote.value=''; if(watchHorseSearch)watchHorseSearch.value='';}
+  loadWatchHorses();loadScoringRules();
+}
 async function loadWatchHorses(){const j=await (await fetch('/api/watch-horses')).json();watchList.innerHTML=(j.watch_horses||[]).map(r=>`<div class="rec"><div class="mark">${r.alert_condition||'注目'} ${r.horse_name}</div>${r.race_id?`<b>出走中：${r.venue}${r.race_no}R ${r.race_name}</b>`:'<b>出走予定なし</b>'}<p>${r.note||''}</p></div>`).join('')||'登録馬はまだありません。';}
 async function saveBias(){const body={date:biasDate.value,venue:biasVenue.value,surface:biasSurface.value,inside:+inside.value||0,outside:+outside.value||0,front:+front.value||0,stalker:+stalker.value||0,closer:+closer.value||0,deep_closer:+deepCloser.value||0,comment:biasComment.value};const res=await fetch('/api/admin/biases',{method:'POST',headers:auth(),body:JSON.stringify(body)});biasMsg.textContent=JSON.stringify(await res.json());}
 async function loadLogs(){const res=await fetch('/api/admin/logs',{headers:auth()});logs.textContent=JSON.stringify(await res.json(),null,2)}

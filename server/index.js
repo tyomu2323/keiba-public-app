@@ -151,8 +151,7 @@ function calcRuleScoresForRace(raceId){
   for(const e of entries){
     const ruleSum = rows.filter(r=>r.horse_id===e.horse_id).reduce((a,b)=>a+Number(b.score||0),0);
     const manualSum = db.prepare('SELECT COALESCE(SUM(score),0) s FROM manual_horse_scores WHERE race_id=? AND horse_id=?').get(raceId,e.horse_id)?.s || 0;
-    const recAdd = db.prepare('SELECT COALESCE(SUM(add_score),0) s FROM recommendations WHERE race_id=? AND horse_id=?').get(raceId,e.horse_id)?.s || 0;
-    db.prepare('UPDATE entries SET score=? WHERE race_id=? AND horse_id=?').run(Number((ruleSum+manualSum+recAdd).toFixed(1)),raceId,e.horse_id);
+    db.prepare('UPDATE entries SET score=? WHERE race_id=? AND horse_id=?').run(Number((ruleSum+manualSum).toFixed(1)),raceId,e.horse_id);
   }
   return rows;
 }
@@ -181,10 +180,10 @@ app.get('/api/races/:id', (req, res) => {
   if (!race) return res.status(404).json({ error: 'not_found' });
   const entries = db.prepare(`
     SELECT e.*, h.name,
-      COALESCE((SELECT mark FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') mark,
-      COALESCE((SELECT add_score FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),0) rec_add_score,
-      COALESCE((SELECT reason FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') rec_reason,
-      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note,
+      COALESCE(e.manual_mark,'') mark,
+      0 rec_add_score,
+      '' rec_reason,
+      '' bet_note,
       COALESCE((SELECT SUM(score) FROM horse_scores hs WHERE hs.race_id=e.race_id AND hs.horse_id=e.horse_id),0) auto_score,
       COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id),0) manual_score
     FROM entries e JOIN horses h ON h.id=e.horse_id
@@ -198,10 +197,10 @@ app.get('/api/races/:id', (req, res) => {
   const bias = db.prepare('SELECT * FROM biases WHERE date=? AND venue=? AND surface=?').get(race.date, race.venue, race.surface) || null;
   const updatedEntries = db.prepare(`
     SELECT e.*, h.name,
-      COALESCE((SELECT mark FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') mark,
-      COALESCE((SELECT add_score FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),0) rec_add_score,
-      COALESCE((SELECT reason FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') rec_reason,
-      COALESCE((SELECT bet_note FROM recommendations r WHERE r.race_id=e.race_id AND r.horse_id=e.horse_id ORDER BY id DESC LIMIT 1),'') bet_note,
+      COALESCE(e.manual_mark,'') mark,
+      0 rec_add_score,
+      '' rec_reason,
+      '' bet_note,
       COALESCE((SELECT SUM(score) FROM horse_scores hs WHERE hs.race_id=e.race_id AND hs.horse_id=e.horse_id),0) auto_score,
       COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id),0) manual_score
     FROM entries e JOIN horses h ON h.id=e.horse_id
@@ -211,30 +210,26 @@ app.get('/api/races/:id', (req, res) => {
 });
 
 app.get('/api/recommendations', (req, res) => {
+  // V21: おすすめ馬はレース印ではなく、POG的な将来期待馬として watch_horses を表示します。
   const rows = db.prepare(`
-    SELECT rec.*, h.name horse_name, races.name race_name, races.date, races.venue, races.race_no
-    FROM recommendations rec
-    JOIN horses h ON h.id=rec.horse_id
-    JOIN races ON races.id=rec.race_id
-    ORDER BY races.date, races.venue, races.race_no, CASE rec.mark WHEN '◎' THEN 1 WHEN '○' THEN 2 WHEN '▲' THEN 3 WHEN '△' THEN 4 ELSE 9 END
+    SELECT w.id, w.horse_id, w.horse_name, w.note, w.alert_condition, w.updated_at,
+      e.race_id, e.frame_no, e.horse_no, r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance
+    FROM watch_horses w
+    LEFT JOIN entries e ON e.horse_id=w.horse_id
+    LEFT JOIN races r ON r.id=e.race_id
+    WHERE w.active=1
+    ORDER BY w.updated_at DESC, w.horse_name
   `).all();
   res.json({ recommendations: rows });
 });
 
-
-app.get('/api/jockeys/:name', (req, res) => {
-  const name = decodeURIComponent(req.params.name);
-  const stats = db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? ORDER BY CASE period_type WHEN 'recent_1m' THEN 1 WHEN 'year' THEN 2 WHEN 'lifetime' THEN 3 ELSE 9 END, venue, surface, distance`).all(name);
-  const recentRides = db.prepare(`
-    SELECT r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance, h.name horse_name, e.frame_no, e.horse_no, e.popularity, e.actual_odds, e.running_style
-    FROM entries e
-    JOIN races r ON r.id=e.race_id
-    JOIN horses h ON h.id=e.horse_id
-    WHERE e.jockey=?
-    ORDER BY r.date DESC, r.venue, r.race_no
-    LIMIT 50
-  `).all(name);
-  res.json({ jockey: { name }, stats, recentRides });
+app.get('/api/admin/horses/search', requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const like = `%${q}%`;
+  const rows = q
+    ? db.prepare('SELECT id, name, sex, birth_date, sire, dam_sire FROM horses WHERE name LIKE ? ORDER BY name LIMIT 30').all(like)
+    : db.prepare('SELECT id, name, sex, birth_date, sire, dam_sire FROM horses ORDER BY updated_at DESC, name LIMIT 30').all();
+  res.json({ horses: rows });
 });
 
 app.get('/api/horses/:id', (req, res) => {
@@ -303,27 +298,38 @@ app.get('/api/watch-horses', (req, res) => {
 });
 
 app.post('/api/admin/watch-horses', requireAdmin, (req, res) => {
-  const { horse_name, note='', alert_condition='注目' } = req.body || {};
-  if (!horse_name || !horse_name.trim()) return res.status(400).json({ error: 'horse_name is required' });
-  const name = horse_name.trim();
-  let horse = db.prepare('SELECT * FROM horses WHERE name=?').get(name);
-  if (!horse) {
-    const id = 'watch-' + Buffer.from(name).toString('hex').slice(0, 24);
-    db.prepare('INSERT OR IGNORE INTO horses (id,name,updated_at) VALUES (?,?,?)').run(id, name, nowIso());
-    horse = { id, name };
+  const { horse_id='', horse_name='', note='', alert_condition='注目' } = req.body || {};
+  let horse = null;
+  if (horse_id) horse = db.prepare('SELECT * FROM horses WHERE id=?').get(horse_id);
+  const nameInput = String(horse_name || '').trim();
+  if (!horse && nameInput) horse = db.prepare('SELECT * FROM horses WHERE name=?').get(nameInput);
+  if (!horse && nameInput) {
+    const id = 'watch-' + Buffer.from(nameInput).toString('hex').slice(0, 24);
+    db.prepare('INSERT OR IGNORE INTO horses (id,name,updated_at) VALUES (?,?,?)').run(id, nameInput, nowIso());
+    horse = { id, name: nameInput };
   }
+  if (!horse) return res.status(400).json({ error: 'horse_id or horse_name is required' });
   db.prepare(`INSERT INTO watch_horses (horse_id,horse_name,note,alert_condition,active,updated_at) VALUES (?,?,?,?,1,?)
-    ON CONFLICT(horse_name) DO UPDATE SET horse_id=excluded.horse_id,note=excluded.note,alert_condition=excluded.alert_condition,active=1,updated_at=excluded.updated_at`)
-    .run(horse.id, name, note, alert_condition, nowIso());
-  res.json({ ok: true });
+    ON CONFLICT(horse_id) DO UPDATE SET horse_name=excluded.horse_name,note=excluded.note,alert_condition=excluded.alert_condition,active=1,updated_at=excluded.updated_at`)
+    .run(horse.id, horse.name, note, alert_condition, nowIso());
+  res.json({ ok: true, horse_id: horse.id, horse_name: horse.name });
 });
 
+app.post('/api/admin/marks', requireAdmin, (req, res) => {
+  const { race_id, horse_id, mark='' } = req.body || {};
+  if (!race_id || !horse_id) return res.status(400).json({ error: 'race_id and horse_id are required' });
+  db.prepare('UPDATE entries SET manual_mark=?, updated_at=? WHERE race_id=? AND horse_id=?')
+    .run(String(mark || ''), nowIso(), race_id, horse_id);
+  res.json({ ok: true, mark: String(mark || '') });
+});
+
+// 互換用：旧APIを呼んでも加点やおすすめ馬にはしない。印だけ保存します。
 app.post('/api/admin/recommendations', requireAdmin, (req, res) => {
-  const { race_id, horse_id, mark, confidence=3, reason='', bet_note='', add_score=0 } = req.body || {};
-  if (!race_id || !horse_id || !mark) return res.status(400).json({ error: 'race_id, horse_id, mark are required' });
-  db.prepare(`INSERT INTO recommendations (race_id,horse_id,mark,confidence,reason,bet_note,add_score,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
-    .run(race_id, horse_id, mark, confidence, reason, bet_note, add_score, nowIso());
-  res.json({ ok: true });
+  const { race_id, horse_id, mark='' } = req.body || {};
+  if (!race_id || !horse_id) return res.status(400).json({ error: 'race_id and horse_id are required' });
+  db.prepare('UPDATE entries SET manual_mark=?, updated_at=? WHERE race_id=? AND horse_id=?')
+    .run(String(mark || ''), nowIso(), race_id, horse_id);
+  res.json({ ok: true, mark: String(mark || '') });
 });
 
 
