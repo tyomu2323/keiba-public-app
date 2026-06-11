@@ -213,3 +213,21 @@ body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
   .aptitude-ranking-grid{grid-template-columns:repeat(3,minmax(54px,1fr));}
   .colored-horse-no{width:32px;height:32px;font-size:13px;}
 }
+
+/* v28: コース適性ランキングを18頭でも見やすいカード型へ戻す */
+.aptitude-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;}
+.aptitude-head h3{margin:0;}
+.aptitude-head span{font-size:12px;font-weight:800;background:#eef6ef;color:#245b43;border-radius:999px;padding:4px 10px;white-space:nowrap;}
+.aptitude-ranking-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px;}
+.aptitude-rank-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border:1px solid #e4e0d8;border-radius:12px;background:#fff;padding:8px;box-shadow:0 1px 6px #0000000a;min-width:0;}
+.aptitude-rank-card.rank-top{background:#fffaf0;border-color:#dec77a;}
+.aptitude-rank-left{display:flex;align-items:center;gap:6px;}
+.aptitude-rank-order{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#243b2f;color:#fff;font-size:12px;font-weight:900;}
+.aptitude-rank-main{min-width:0;display:flex;flex-direction:column;gap:2px;}
+.aptitude-rank-main b{font-size:13px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.aptitude-rank-main small{font-size:10px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.aptitude-rank-point{font-weight:900;font-size:18px;color:#7a4d21;text-align:right;line-height:1;white-space:nowrap;}
+.aptitude-rank-point small{font-size:10px;margin-left:1px;color:#8a6a45;}
+.aptitude-rank-card .aptitude-horse-no{width:30px;height:30px;font-size:13px;}
+@media(max-width:900px){.aptitude-ranking-list{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:560px){.aptitude-ranking-list{grid-template-columns:1fr;}.aptitude-rank-main small{white-space:normal;}}
