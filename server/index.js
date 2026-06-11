@@ -47,6 +47,71 @@ function rankedScoreRows(rankNo){
 }
 
 
+
+function finishBucketRecord(rows){
+  const out={starts:rows.length,wins:0,seconds:0,thirds:0,fourths:0,fifths_or_worse:0};
+  for(const r of rows){
+    const f=Number(r.finish_position||99);
+    if(f===1) out.wins++; else if(f===2) out.seconds++; else if(f===3) out.thirds++; else if(f===4) out.fourths++; else out.fifths_or_worse++;
+  }
+  out.text=`${out.wins}-${out.seconds}-${out.thirds}-${out.fourths}-${out.fifths_or_worse}`;
+  return out;
+}
+function recordForHorsePastRuns(horseId, whereSql='', params=[]){
+  const rows=db.prepare(`SELECT finish_position FROM horse_past_runs WHERE horse_id=? ${whereSql}`).all(horseId, ...params);
+  return finishBucketRecord(rows);
+}
+function lastMarginText(p){
+  if(!p) return '-';
+  const m=String(p.margin||'').trim();
+  if(m) return m;
+  return p.time_seconds ? '計測済' : '-';
+}
+function entryHorseBar(horseId, race){
+  const rows=db.prepare(`SELECT date,venue,race_name,surface,distance,finish_position,popularity,odds,margin,last_3f,last_3f_rank,passing_order FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 5`).all(horseId);
+  return rows.map(r=>({date:r.date,venue:r.venue,race_name:r.race_name,surface:r.surface,distance:r.distance,finish_position:r.finish_position,popularity:r.popularity,odds:r.odds,margin:lastMarginText(r),last_3f:r.last_3f,last_3f_rank:r.last_3f_rank,passing_order:r.passing_order,is_same_condition:r.venue===race.venue && r.surface===race.surface && Number(r.distance)===Number(race.distance)}));
+}
+function conditionStatsForEntry(e,race){
+  return {
+    same_condition: recordForHorsePastRuns(e.horse_id, 'AND venue=? AND surface=? AND distance=?', [race.venue,race.surface,race.distance]),
+    same_distance: recordForHorsePastRuns(e.horse_id, 'AND surface=? AND distance=?', [race.surface,race.distance]),
+    same_venue: recordForHorsePastRuns(e.horse_id, 'AND venue=?', [race.venue])
+  };
+}
+function jockeyContextStats(jockey,race){
+  const periods=['recent_1m','year','lifetime'];
+  const out={};
+  for(const period of periods){
+    const distance=db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? AND period_type=? AND COALESCE(venue,'')='' AND surface=? AND distance=? ORDER BY id DESC LIMIT 1`).get(jockey,period,race.surface,race.distance);
+    const venue=db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? AND period_type=? AND venue=? AND COALESCE(surface,'')='' AND distance IS NULL ORDER BY id DESC LIMIT 1`).get(jockey,period,race.venue);
+    const condition=db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? AND period_type=? AND venue=? AND surface=? AND distance=? ORDER BY id DESC LIMIT 1`).get(jockey,period,race.venue,race.surface,race.distance)
+      || db.prepare(`SELECT * FROM jockey_stats WHERE jockey=? AND period_type=? AND COALESCE(venue,'')='' AND surface=? AND distance=? ORDER BY id DESC LIMIT 1`).get(jockey,period,race.surface,race.distance);
+    out[period]={distance:distance||null,venue:venue||null,condition:condition||null};
+  }
+  return out;
+}
+function buildPaceSummary(entries){
+  const counts={逃げ:0,先行:0,差し:0,追込:0,未定:0};
+  for(const e of entries){const k=['逃げ','先行','差し','追込'].includes(e.running_style)?e.running_style:'未定'; counts[k]++;}
+  const front=counts.逃げ+counts.先行;
+  const back=counts.差し+counts.追込;
+  let comment='平均的な隊列になりやすい構成';
+  if(counts.逃げ>=3 || front>=6) comment='前に行く馬が多く、差しも届く流れになりやすい';
+  else if(counts.逃げ<=1 && front<=3) comment='前が少なく、逃げ・先行に展開利が出やすい';
+  else if(back>=6) comment='差し追込が多く、前に行ける馬に注意';
+  return {counts,comment};
+}
+function buildCourseRanking(entries,race){
+  return entries.map(e=>{
+    const stats=conditionStatsForEntry(e,race);
+    const same=stats.same_condition;
+    const dist=stats.same_distance;
+    const venue=stats.same_venue;
+    const point=same.wins*5+same.seconds*3+same.thirds*2+dist.wins*2+venue.wins;
+    return {horse_id:e.horse_id,horse_name:e.name,frame_no:e.frame_no,horse_no:e.horse_no,point,same_condition:same.text,same_distance:dist.text,same_venue:venue.text};
+  }).sort((a,b)=>b.point-a.point || Number(a.horse_no)-Number(b.horse_no)).map((r,i)=>({...r,rank:i+1}));
+}
+
 function raceTurn(venue){
   return ['東京','新潟','中京'].includes(String(venue||'')) ? '左' : '右';
 }
@@ -205,8 +270,14 @@ app.get('/api/races/:id', (req, res) => {
       COALESCE((SELECT SUM(score) FROM manual_horse_scores ms WHERE ms.race_id=e.race_id AND ms.horse_id=e.horse_id),0) manual_score
     FROM entries e JOIN horses h ON h.id=e.horse_id
     WHERE e.race_id=? ORDER BY e.horse_no
-  `).all(req.params.id);
-  res.json({ race, entries: updatedEntries, workouts, scores, bias });
+  `).all(req.params.id).map(e => ({
+    ...e,
+    horse_bar: entryHorseBar(e.horse_id, race),
+    condition_stats: conditionStatsForEntry(e, race)
+  }));
+  const pace = buildPaceSummary(updatedEntries);
+  const course_ranking = buildCourseRanking(updatedEntries, race);
+  res.json({ race, entries: updatedEntries, workouts, scores, bias, pace, course_ranking });
 });
 
 app.get('/api/recommendations', (req, res) => {
@@ -234,10 +305,11 @@ app.get('/api/admin/horses/search', requireAdmin, (req, res) => {
 
 app.get('/api/horses/:id', (req, res) => {
   const id = decodeURIComponent(req.params.id);
+  const raceId = String(req.query.race_id || '');
   const horse = db.prepare('SELECT * FROM horses WHERE id=?').get(id);
   if(!horse) return res.status(404).json({ error: 'not_found' });
   const entries = db.prepare(`
-    SELECT e.*, r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance, r.going
+    SELECT e.*, r.date, r.venue, r.race_no, r.name race_name, r.surface, r.distance, r.going, r.id race_id
     FROM entries e JOIN races r ON r.id=e.race_id
     WHERE e.horse_id=?
     ORDER BY r.date DESC, r.venue, r.race_no
@@ -246,7 +318,21 @@ app.get('/api/horses/:id', (req, res) => {
   const pastRuns = db.prepare('SELECT * FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 50').all(id);
   const watch = db.prepare('SELECT * FROM watch_horses WHERE horse_id=? OR horse_name=?').get(id, horse.name) || null;
   const scores = db.prepare('SELECT * FROM horse_scores WHERE horse_id=? ORDER BY updated_at DESC LIMIT 50').all(id);
-  res.json({ horse, entries, workouts, pastRuns, watch, scores });
+  let current = null;
+  if(raceId){
+    const race = db.prepare('SELECT * FROM races WHERE id=?').get(raceId);
+    const entry = db.prepare('SELECT e.*, h.name FROM entries e JOIN horses h ON h.id=e.horse_id WHERE e.race_id=? AND e.horse_id=?').get(raceId,id);
+    if(race && entry){
+      current = {
+        race,
+        entry,
+        condition_stats: conditionStatsForEntry(entry, race),
+        jockey_context: jockeyContextStats(entry.jockey, race),
+        horse_bar: entryHorseBar(id, race)
+      };
+    }
+  }
+  res.json({ horse, entries, workouts, pastRuns, watch, scores, current });
 });
 
 app.post('/api/admin/fetch', requireAdmin, async (req, res) => {
