@@ -78,6 +78,21 @@ function conditionStatsForEntry(e,race){
     same_venue: recordForHorsePastRuns(e.horse_id, 'AND venue=?', [race.venue])
   };
 }
+function weightedRecordPoint(rec, weights){
+  if(!rec) return 0;
+  return Number(((Number(rec.wins||0)*(weights[1]||0)) + (Number(rec.seconds||0)*(weights[2]||0)) + (Number(rec.thirds||0)*(weights[3]||0)) + (Number(rec.fourths||0)*(weights[4]||0))).toFixed(1));
+}
+function firstCornerFromPassingOrder(order){
+  const nums=String(order||'').match(/\d+/g);
+  return nums && nums.length ? Number(nums[0]) : null;
+}
+function estimatePositionScore(entry){
+  const rows=db.prepare('SELECT passing_order FROM horse_past_runs WHERE horse_id=? ORDER BY date DESC LIMIT 5').all(entry.horse_id);
+  const vals=rows.map(r=>firstCornerFromPassingOrder(r.passing_order)).filter(v=>Number(v)>0);
+  const avg=vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+  const styleBase={逃げ:1.5,先行:4,差し:8,追込:12}[entry.running_style] || 9;
+  return Number((avg ? (avg*0.7 + styleBase*0.3) : styleBase).toFixed(2));
+}
 function jockeyContextStats(jockey,race){
   const periods=['recent_1m','year','lifetime'];
   const out={};
@@ -92,14 +107,21 @@ function jockeyContextStats(jockey,race){
 }
 function buildPaceSummary(entries){
   const counts={逃げ:0,先行:0,差し:0,追込:0,未定:0};
-  for(const e of entries){const k=['逃げ','先行','差し','追込'].includes(e.running_style)?e.running_style:'未定'; counts[k]++;}
+  const groups={逃げ:[],先行:[],差し:[],追込:[],未定:[]};
+  for(const e of entries){
+    const k=['逃げ','先行','差し','追込'].includes(e.running_style)?e.running_style:'未定';
+    counts[k]++;
+    groups[k].push({horse_id:e.horse_id,horse_name:e.name,horse_no:e.horse_no,frame_no:e.frame_no,running_style:k,position_score:estimatePositionScore(e)});
+  }
+  for(const k of Object.keys(groups)) groups[k].sort((a,b)=>a.position_score-b.position_score || Number(a.horse_no)-Number(b.horse_no));
+  const positioned=[...groups.逃げ,...groups.先行,...groups.差し,...groups.追込,...groups.未定].map((r,i)=>({...r,predicted_position:i+1}));
   const front=counts.逃げ+counts.先行;
   const back=counts.差し+counts.追込;
   let comment='平均的な隊列になりやすい構成';
   if(counts.逃げ>=3 || front>=6) comment='前に行く馬が多く、差しも届く流れになりやすい';
   else if(counts.逃げ<=1 && front<=3) comment='前が少なく、逃げ・先行に展開利が出やすい';
   else if(back>=6) comment='差し追込が多く、前に行ける馬に注意';
-  return {counts,comment};
+  return {counts,groups,positioned,comment};
 }
 function buildCourseRanking(entries,race){
   return entries.map(e=>{
@@ -107,8 +129,11 @@ function buildCourseRanking(entries,race){
     const same=stats.same_condition;
     const dist=stats.same_distance;
     const venue=stats.same_venue;
-    const point=same.wins*5+same.seconds*3+same.thirds*2+dist.wins*2+venue.wins;
-    return {horse_id:e.horse_id,horse_name:e.name,frame_no:e.frame_no,horse_no:e.horse_no,point,same_condition:same.text,same_distance:dist.text,same_venue:venue.text};
+    const samePoint=weightedRecordPoint(same,{1:5,2:4,3:3,4:1});
+    const distancePoint=weightedRecordPoint(dist,{1:2,2:1,3:1,4:1});
+    const venuePoint=weightedRecordPoint(venue,{1:1,2:1,3:1,4:0});
+    const point=Number((samePoint+distancePoint+venuePoint).toFixed(1));
+    return {horse_id:e.horse_id,horse_name:e.name,frame_no:e.frame_no,horse_no:e.horse_no,point,same_point:samePoint,distance_point:distancePoint,venue_point:venuePoint,same_condition:same.text,same_distance:dist.text,same_venue:venue.text};
   }).sort((a,b)=>b.point-a.point || Number(a.horse_no)-Number(b.horse_no)).map((r,i)=>({...r,rank:i+1}));
 }
 
@@ -333,6 +358,14 @@ app.get('/api/horses/:id', (req, res) => {
     }
   }
   res.json({ horse, entries, workouts, pastRuns, watch, scores, current });
+});
+
+app.get('/api/horses/:id/past-runs/:date', (req, res) => {
+  const id = decodeURIComponent(req.params.id);
+  const date = decodeURIComponent(req.params.date);
+  const row = db.prepare('SELECT * FROM horse_past_runs WHERE horse_id=? AND date=? ORDER BY id DESC LIMIT 1').get(id, date);
+  if(!row) return res.status(404).json({ error: 'not_found' });
+  res.json({ past_run: row });
 });
 
 app.post('/api/admin/fetch', requireAdmin, async (req, res) => {

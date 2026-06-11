@@ -1,5 +1,6 @@
 let token=localStorage.getItem('adminToken')||'';let races=[];
 function auth(){return {Authorization:'Bearer '+token,'Content-Type':'application/json'}}
+function logout(){localStorage.removeItem('adminToken');token='';document.querySelectorAll('.admin-only').forEach(e=>e.classList.add('hidden'));loginBox.classList.remove('hidden');loginMsg.textContent='ログアウトしました';}
 async function login(){const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user.value,password:pass.value})});const j=await res.json();if(j.token){token=j.token;localStorage.setItem('adminToken',token);showAdmin();}else loginMsg.textContent=j.error||'失敗';}
 function showAdmin(){document.querySelectorAll('.admin-only').forEach(e=>e.classList.remove('hidden'));loginBox.classList.add('hidden');loadRaces();loadLogs();loadWatchHorses();loadScoringRules();loadValidation();}
 async function manualFetch(){fetchResult.textContent='取得中...';const res=await fetch('/api/admin/fetch',{method:'POST',headers:auth(),body:JSON.stringify({mode:'manual',target:target.value,dateFrom:dateFrom.value,dateTo:dateTo.value})});fetchResult.textContent=JSON.stringify(await res.json(),null,2);loadRaces();loadLogs();loadWatchHorses();loadScoringRules();}
