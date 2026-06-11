@@ -6,6 +6,23 @@ function blankButton(no){return `<button class="race-btn disabled" disabled><spa
 function frameClass(n){return `frame-${Number(n)||0}`}
 function horseNoBadge(e){return `<span class="frame-badge ${frameClass(e.frame_no)}">${e.frame_no||'-'}</span><span class="horse-no">${e.horse_no||'-'}</span>`}
 function coloredHorseNoOnly(e, extraClass=''){return `<span class="horse-no colored-horse-no ${extraClass} ${frameClass(e.frame_no)}" title="${e.horse_name||e.name||''}">${e.horse_no||'-'}</span>`}
+
+const USER_MARKS=['◎','○','▲','△','☆','消'];
+function myMarkKey(raceId, horseId){return `myMark:${raceId}:${horseId}`}
+function getMyMark(raceId, horseId){try{return localStorage.getItem(myMarkKey(raceId, horseId)) || ''}catch(e){return ''}}
+function setMyMark(raceId, horseId, mark){
+ try{
+  const key=myMarkKey(raceId, horseId);
+  if(!mark || getMyMark(raceId, horseId)===mark) localStorage.removeItem(key); else localStorage.setItem(key, mark);
+ }catch(e){}
+ renderRaceDetail(currentWorkoutMode||'final');
+}
+function myMarkButtons(e){
+ const raceId=e.race_id || currentRaceDetail?.race?.id || '';
+ const cur=getMyMark(raceId, e.horse_id);
+ return `<div class="my-mark-box"><div class="my-mark-current">${cur?`マイ印 ${cur}`:'マイ印 -'}</div><div class="my-mark-buttons">${USER_MARKS.map(m=>`<button class="my-mark-btn ${cur===m?'active':''}" onclick="setMyMark('${raceId}','${e.horse_id}','${m}')">${m}</button>`).join('')}</div></div>`;
+}
+function adminMarkSmall(e){return e.mark?`<span class="admin-mark-small" title="管理者印">管理${e.mark}</span>`:''}
 function stars(n){return '★'.repeat(Number(n)||0)}
 function styleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
 function scoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
@@ -22,6 +39,7 @@ function fillSurfaceDistances(rows, surface, distances){
 function fillVenues(rows){const map=new Map(rows.map(s=>[s.venue,s]));return JRA_VENUES.map(v=>map.get(v)||emptyStat({venue:v}))}
 
 let currentRaceDetail=null;
+let currentWorkoutMode='final';
 async function load(){
  const [recs,races,watch]=await Promise.all([api('/api/recommendations'),api('/api/races'),api('/api/watch-horses')]);
  document.getElementById('recs').innerHTML = recs.recommendations.length?recs.recommendations.map(r=>`<div class="rec"><div class="mark">${r.alert_condition||'注目'} ${r.horse_name}</div>${r.race_id?`<b>出走中：${r.venue}${r.race_no}R ${r.race_name}</b>`:'<b>出走予定なし</b>'}<p>${r.note||''}</p>${r.race_id?`<button onclick="detail('${r.race_id}')">レースを見る</button>`:''}</div>`).join(''):'まだ登録がありません。';
@@ -193,13 +211,21 @@ function courseRankingBlock(rows){
  if(!rows?.length)return '';
  return `<div class="analysis-box aptitude-box"><div class="aptitude-head"><h3>コース適性ランキング</h3><span>${rows.length}頭</span></div><p class="muted">同条件：1着5点/2着4点/3着3点/4着1点、同距離：1着2点/2〜4着1点、同場所：1〜3着1点</p><div class="aptitude-ranking-list">${rows.map(r=>`<div class="aptitude-rank-card rank-${r.rank<=3?'top':''}" title="${r.horse_name||''} / 同条件 ${r.same_condition} / 同距離 ${r.same_distance} / 同場所 ${r.same_venue}"><div class="aptitude-rank-left"><span class="aptitude-rank-order">${r.rank}</span>${coloredHorseNoOnly(r,'aptitude-horse-no')}</div><div class="aptitude-rank-main"><b>${r.horse_name||r.name||'-'}</b><small>同条件${r.same_point} / 距離${r.distance_point} / 場所${r.venue_point}</small></div><div class="aptitude-rank-point">${r.point}<small>点</small></div></div>`).join('')}</div></div>`
 }
+
+function adminMarksBlock(entries){
+ const order={'◎':1,'○':2,'▲':3,'△':4,'☆':5,'消':6};
+ const rows=[...(entries||[])].filter(e=>e.mark).sort((a,b)=>(order[a.mark]||99)-(order[b.mark]||99)||Number(a.horse_no)-Number(b.horse_no));
+ if(!rows.length) return `<div class="analysis-box admin-recommend-box"><h3>推奨馬 <small>管理者印</small></h3><p class="muted">管理者印はまだ登録されていません。</p></div>`;
+ return `<div class="analysis-box admin-recommend-box"><h3>推奨馬 <small>管理者印</small></h3><div class="admin-recommend-list">${rows.map(e=>`<div class="admin-recommend-item mark-${e.mark}"><span class="admin-recommend-mark">${e.mark}</span>${coloredHorseNoOnly(e,'admin-recommend-no')}<div><b>${e.name||e.horse_name||'-'}</b><small>${e.running_style||'-'} / ${e.jockey||''} / 総合${Number(e.score||0)}</small></div></div>`).join('')}</div></div>`;
+}
 function scoreBox(e,score,auto,manual){return `<div class="score-inline"><span class="score-pill ${scoreClass(score)}">総合 ${score}</span><div class="score-split"><span>自動 ${auto}</span><span>手動 ${manual}</span></div></div>`}
 function totalRankingBlock(entries){const rows=[...(entries||[])].sort((a,b)=>Number(b.score||0)-Number(a.score||0)||Number(a.horse_no)-Number(b.horse_no)).slice(0,5);return `<div class="analysis-box"><h3>総合点ランキング</h3><ol class="ranking-list">${rows.map(e=>`<li>${horseNoBadge(e)} ${e.name} <b>${Number(e.score||0)}</b></li>`).join('')}</ol></div>`}
 function renderRaceDetail(mode='final'){
+ currentWorkoutMode=mode;
  const d=currentRaceDetail;if(!d)return;
  const workoutMap={};for(const w of d.workouts){if(!workoutMap[w.horse_id] || String(w.date||'') > String(workoutMap[w.horse_id].date||'')) workoutMap[w.horse_id]=w;}
- const entriesHtml=d.entries.map(e=>{const w=workoutMap[e.horse_id];const score=Number(e.score||0);const auto=Number(e.auto_score||0);const manual=Number(e.manual_score||0);return `<tr><td class="mark-cell">${e.mark||''}</td><td>${horseNoBadge(e)}</td><td><b>${linkHorse(e)}</b><br><span class="muted">${e.sex_age||''}</span></td><td>${e.carried_weight?`${e.carried_weight}kg`:''}</td><td>${styleBadge(e.running_style)}</td><td>${linkJockey(e.jockey)}</td><td>${e.popularity||'-'}人気<br><b>${e.actual_odds||'-'}倍</b></td><td>${bodyWeightText(e)}</td><td>${scoreBox(e,score,auto,manual)}${renderScoreBreakdown(e,d.scores)}</td><td>${horseBarRow(e)}</td><td>${conditionStatsMini(e)}</td><td>${w?`<b>調教コース：${w.course}</b> ${w.intensity}<br><span class="muted">${w.lap_text} / ${pct(w.percentile)}</span>`:''}</td><td>${e.theoretical_odds||''}</td></tr>`}).join('');
- document.getElementById('detail').innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">${d.race.date} / ${d.race.surface}${d.race.distance}m / 馬場 ${d.race.going||'-'}</p>${d.bias?`<p><span class="pill">${d.race.venue} ${d.race.surface} バイアス</span>内${d.bias.inside} 外${d.bias.outside} 逃げ${d.bias.front} 先行${d.bias.stalker} 差し${d.bias.closer} 追込${d.bias.deep_closer||0}<br>${d.bias.comment}</p>`:''}<div class="race-analysis-grid">${courseRankingBlock(d.course_ranking)}${paceBlock(d.pace)}</div><div class="table-wrap"><table class="newspaper wide-table"><thead><tr><th>印</th><th>枠/馬</th><th>馬</th><th>斤量</th><th>脚質</th><th>騎手</th><th>人気/オッズ</th><th>馬体重</th><th>加点</th><th>馬柱</th><th>同条件成績</th><th>最終追切</th><th>理論</th></tr></thead><tbody>${entriesHtml}</tbody></table></div><div class="workout-switch"><h3>追い切り</h3><button onclick="renderRaceDetail('final')" class="${mode==='final'?'active':''}">最終追い切り</button><button onclick="renderRaceDetail('all')" class="${mode==='all'?'active':''}">全追い切り</button></div>${renderWorkoutTable(d.entries,d.workouts,mode)}`;
+ const entriesHtml=d.entries.map(e=>{const w=workoutMap[e.horse_id];const score=Number(e.score||0);const auto=Number(e.auto_score||0);const manual=Number(e.manual_score||0);return `<tr><td class="my-mark-cell">${myMarkButtons(e)}</td><td>${horseNoBadge(e)}</td><td><b>${linkHorse(e)}</b> ${adminMarkSmall(e)}<br><span class="muted">${e.sex_age||''}</span></td><td>${e.carried_weight?`${e.carried_weight}kg`:''}</td><td>${styleBadge(e.running_style)}</td><td>${linkJockey(e.jockey)}</td><td>${e.popularity||'-'}人気<br><b>${e.actual_odds||'-'}倍</b></td><td>${bodyWeightText(e)}</td><td>${scoreBox(e,score,auto,manual)}${renderScoreBreakdown(e,d.scores)}</td><td>${horseBarRow(e)}</td><td>${conditionStatsMini(e)}</td><td>${w?`<b>調教コース：${w.course}</b> ${w.intensity}<br><span class="muted">${w.lap_text} / ${pct(w.percentile)}</span>`:''}</td><td>${e.theoretical_odds||''}</td></tr>`}).join('');
+ document.getElementById('detail').innerHTML=`<h3>${d.race.venue}${d.race.race_no}R ${d.race.name}</h3><p class="muted">${d.race.date} / ${d.race.surface}${d.race.distance}m / 馬場 ${d.race.going||'-'}</p>${d.bias?`<p><span class="pill">${d.race.venue} ${d.race.surface} バイアス</span>内${d.bias.inside} 外${d.bias.outside} 逃げ${d.bias.front} 先行${d.bias.stalker} 差し${d.bias.closer} 追込${d.bias.deep_closer||0}<br>${d.bias.comment}</p>`:''}<div class="race-analysis-grid">${paceBlock(d.pace)}${adminMarksBlock(d.entries)}${courseRankingBlock(d.course_ranking)}</div><div class="table-wrap"><table class="newspaper wide-table"><thead><tr><th>マイ印</th><th>枠/馬</th><th>馬</th><th>斤量</th><th>脚質</th><th>騎手</th><th>人気/オッズ</th><th>馬体重</th><th>加点</th><th>馬柱</th><th>同条件成績</th><th>最終追切</th><th>理論</th></tr></thead><tbody>${entriesHtml}</tbody></table></div><div class="workout-switch"><h3>追い切り</h3><button onclick="renderRaceDetail('final')" class="${mode==='final'?'active':''}">最終追い切り</button><button onclick="renderRaceDetail('all')" class="${mode==='all'?'active':''}">全追い切り</button></div>${renderWorkoutTable(d.entries,d.workouts,mode)}`;
 }
 async function detail(id){currentRaceDetail=await api('/api/races/'+encodeURIComponent(id));renderRaceDetail('final');document.getElementById('race-detail-card').scrollIntoView({behavior:'smooth', block:'start'});}
 load();

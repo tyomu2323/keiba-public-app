@@ -231,3 +231,25 @@ body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
 .aptitude-rank-card .aptitude-horse-no{width:30px;height:30px;font-size:13px;}
 @media(max-width:900px){.aptitude-ranking-list{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:560px){.aptitude-ranking-list{grid-template-columns:1fr;}.aptitude-rank-main small{white-space:normal;}}
+
+/* v29: 管理者印とユーザーのマイ印を分離 */
+.my-mark-cell{min-width:180px;vertical-align:middle!important;}
+.my-mark-box{display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
+.my-mark-current{font-size:12px;font-weight:800;color:#245b43;background:#eef6ef;border-radius:999px;padding:3px 8px;white-space:nowrap;}
+.my-mark-buttons{display:flex;flex-wrap:wrap;gap:4px;max-width:170px;}
+.my-mark-btn{background:#fff;color:#243b2f;border:1px solid #cfd8d3;padding:5px 8px;margin:0;border-radius:999px;font-weight:900;font-size:13px;line-height:1;}
+.my-mark-btn:hover{background:#edf7f0;}
+.my-mark-btn.active{background:#245b43;color:#fff;border-color:#245b43;box-shadow:0 0 0 2px #245b4333;}
+.admin-mark-small{display:inline-block;background:#fff3cd;color:#7a4d21;border:1px solid #e5c46b;border-radius:999px;font-size:11px;font-weight:900;padding:2px 7px;margin-left:6px;vertical-align:middle;white-space:nowrap;}
+.admin-recommend-box h3{display:flex;align-items:baseline;gap:8px;}
+.admin-recommend-box h3 small{font-size:12px;color:#777;font-weight:700;}
+.admin-recommend-list{display:grid;gap:8px;}
+.admin-recommend-item{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:8px;border:1px solid #e5e0d8;border-radius:12px;background:#fff;padding:8px;}
+.admin-recommend-mark{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;border-radius:10px;background:#245b43;color:#fff;font-weight:900;font-size:18px;}
+.admin-recommend-item b{display:block;font-size:14px;}
+.admin-recommend-item small{display:block;color:#666;font-size:11px;margin-top:2px;}
+.admin-recommend-no{width:32px!important;height:32px!important;font-size:13px!important;}
+.admin-recommend-item.mark-◎{border-color:#d6a400;background:#fffaf0;}
+.admin-recommend-item.mark-○{border-color:#9bc2e6;background:#f3f9ff;}
+.admin-recommend-item.mark-▲{border-color:#b7d7a8;background:#f6fff2;}
+@media(max-width:760px){.my-mark-cell{min-width:150px}.my-mark-buttons{max-width:140px}.my-mark-btn{padding:5px 7px}}
