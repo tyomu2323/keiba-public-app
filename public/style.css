@@ -132,3 +132,84 @@ body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
 @media(max-width:700px){
   .pace-horse-no{width:32px;height:32px;font-size:13px;}
 }
+
+
+/* v27: 適性ランキング18頭表示＋馬番のみ、展開予想は左から追込・差し・先行・逃げの4列 */
+.colored-horse-no{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  border:1px solid #999;
+  font-weight:900;
+  font-size:14px;
+  margin:0;
+  box-shadow:0 1px 4px #0000001a;
+}
+.aptitude-ranking-grid{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(58px,1fr));
+  gap:8px;
+  margin-top:10px;
+}
+.aptitude-rank-chip{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  border:1px solid #e1ddd3;
+  border-radius:12px;
+  padding:8px 4px;
+  background:#fff;
+  min-width:0;
+}
+.aptitude-rank-no{
+  font-size:11px;
+  color:#666;
+  font-weight:800;
+}
+.aptitude-rank-chip b{
+  font-size:15px;
+  line-height:1;
+}
+.aptitude-rank-chip small{
+  font-size:10px;
+  color:#777;
+  white-space:nowrap;
+}
+.pace-analysis-box{
+  min-width:0;
+}
+.pace-groups.pace-groups-vertical{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:8px 0;
+}
+.pace-groups-vertical .pace-lane{
+  min-width:0;
+  overflow:hidden;
+}
+.pace-groups-vertical .pace-horses{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+}
+.pace-groups-vertical .pace-horse-badge{
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  padding:0;
+}
+@media(max-width:900px){
+  .aptitude-ranking-grid{grid-template-columns:repeat(4,minmax(58px,1fr));}
+  .pace-groups.pace-groups-vertical{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:520px){
+  .aptitude-ranking-grid{grid-template-columns:repeat(3,minmax(54px,1fr));}
+  .colored-horse-no{width:32px;height:32px;font-size:13px;}
+}

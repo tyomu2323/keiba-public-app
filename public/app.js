@@ -5,6 +5,7 @@ function raceButton(r){const label=`${r.race_no}R`;const meta=`${r.name || ''}${
 function blankButton(no){return `<button class="race-btn disabled" disabled><span>${no}R</span><small>未取得</small></button>`}
 function frameClass(n){return `frame-${Number(n)||0}`}
 function horseNoBadge(e){return `<span class="frame-badge ${frameClass(e.frame_no)}">${e.frame_no||'-'}</span><span class="horse-no">${e.horse_no||'-'}</span>`}
+function coloredHorseNoOnly(e, extraClass=''){return `<span class="horse-no colored-horse-no ${extraClass} ${frameClass(e.frame_no)}" title="${e.horse_name||e.name||''}">${e.horse_no||'-'}</span>`}
 function stars(n){return '★'.repeat(Number(n)||0)}
 function styleBadge(s){const m={逃げ:'逃',先行:'先',差し:'差',追込:'追'};return `<span class="style-badge style-${s||'none'}">${m[s]||s||'-'}</span>`}
 function scoreClass(v){v=Number(v)||0;return v>=25?'score-s':v>=15?'score-a':v>=5?'score-b':'score-c'}
@@ -184,11 +185,11 @@ function conditionStatsMini(e){const s=e.condition_stats||{};return `<div class=
 function bodyWeightText(e){const diff=e.body_weight_diff;return e.body_weight?`${e.body_weight}kg${diff!==null&&diff!==undefined?`(${Number(diff)>0?'+':''}${diff})`:''}`:'-'}
 function paceHorseBadge(e){
  const title=e.horse_name||e.name||'';
- return `<span class="pace-horse-badge pace-number-only" title="${title}"><span class="horse-no pace-horse-no ${frameClass(e.frame_no)}">${e.horse_no||'-'}</span></span>`;
+ return `<span class="pace-horse-badge pace-number-only" title="${title}">${coloredHorseNoOnly(e,'pace-horse-no')}</span>`;
 }
-function paceLane(title, rows){return `<div class="pace-lane"><h4>${title}<small>${(rows||[]).length}頭</small></h4><div class="pace-horses">${(rows||[]).map(paceHorseBadge).join('')||'<span class="muted">-</span>'}</div></div>`}
-function paceBlock(pace){if(!pace)return '';const c=pace.counts||{};const g=pace.groups||{};return `<div class="analysis-box"><h3>展開予想</h3><div class="pace-grid"><span>逃げ <b>${c.逃げ||0}</b></span><span>先行 <b>${c.先行||0}</b></span><span>差し <b>${c.差し||0}</b></span><span>追込 <b>${c.追込||0}</b></span></div><div class="pace-groups">${['逃げ','先行','差し','追込'].map(k=>paceLane(k,g[k]||[])).join('')}</div><p>${pace.comment||''}</p></div>`}
-function courseRankingBlock(rows){if(!rows?.length)return '';return `<div class="analysis-box"><h3>コース適性ランキング</h3><p class="muted">同条件：1着5点/2着4点/3着3点/4着1点、同距離：1着2点/2〜4着1点、同場所：1〜3着1点</p><div class="table-wrap"><table class="compact"><thead><tr><th>順位</th><th>枠/馬</th><th>馬名</th><th>適性点</th><th>同条件</th><th>同距離</th><th>同場所</th></tr></thead><tbody>${rows.slice(0,8).map(r=>`<tr><td>${r.rank}</td><td>${horseNoBadge(r)}</td><td>${r.horse_name}</td><td><b>${r.point}</b><br><small>${r.same_point}+${r.distance_point}+${r.venue_point}</small></td><td>${r.same_condition}</td><td>${r.same_distance}</td><td>${r.same_venue}</td></tr>`).join('')}</tbody></table></div></div>`}
+function paceLane(title, rows){return `<div class="pace-lane pace-lane-${title}"><h4>${title}<small>${(rows||[]).length}頭</small></h4><div class="pace-horses">${(rows||[]).map(paceHorseBadge).join('')||'<span class="muted">-</span>'}</div></div>`}
+function paceBlock(pace){if(!pace)return '';const g=pace.groups||{};const order=['追込','差し','先行','逃げ'];return `<div class="analysis-box pace-analysis-box"><h3>展開予想</h3><div class="pace-groups pace-groups-vertical">${order.map(k=>paceLane(k,g[k]||[])).join('')}</div><p>${pace.comment||''}</p></div>`}
+function courseRankingBlock(rows){if(!rows?.length)return '';return `<div class="analysis-box aptitude-box"><h3>コース適性ランキング</h3><p class="muted">同条件：1着5点/2着4点/3着3点/4着1点、同距離：1着2点/2〜4着1点、同場所：1〜3着1点</p><div class="aptitude-ranking-grid">${rows.map(r=>`<div class="aptitude-rank-chip" title="${r.horse_name||''} / 同条件 ${r.same_condition} / 同距離 ${r.same_distance} / 同場所 ${r.same_venue}"><span class="aptitude-rank-no">${r.rank}</span>${coloredHorseNoOnly(r,'aptitude-horse-no')}<b>${r.point}</b><small>${r.same_point}+${r.distance_point}+${r.venue_point}</small></div>`).join('')}</div></div>`}
 function scoreBox(e,score,auto,manual){return `<div class="score-inline"><span class="score-pill ${scoreClass(score)}">総合 ${score}</span><div class="score-split"><span>自動 ${auto}</span><span>手動 ${manual}</span></div></div>`}
 function totalRankingBlock(entries){const rows=[...(entries||[])].sort((a,b)=>Number(b.score||0)-Number(a.score||0)||Number(a.horse_no)-Number(b.horse_no)).slice(0,5);return `<div class="analysis-box"><h3>総合点ランキング</h3><ol class="ranking-list">${rows.map(e=>`<li>${horseNoBadge(e)} ${e.name} <b>${Number(e.score||0)}</b></li>`).join('')}</ol></div>`}
 function renderRaceDetail(mode='final'){
