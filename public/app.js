@@ -43,7 +43,6 @@ function openDetailModal(){
 }
 function closeDetailModal(){
  document.getElementById('detailModal').classList.add('hidden');
- window.scrollTo({top:0, behavior:'smooth'});
 }
 function scrollModalTo(id){
  const el=document.getElementById(id);
@@ -183,14 +182,12 @@ function horseBarRow(e){
 }
 function conditionStatsMini(e){const s=e.condition_stats||{};return `<div class="condition-mini"><span>同条件 ${formatRecord(s.same_condition)}</span><span>同距離 ${formatRecord(s.same_distance)}</span><span>同場所 ${formatRecord(s.same_venue)}</span></div>`}
 function bodyWeightText(e){const diff=e.body_weight_diff;return e.body_weight?`${e.body_weight}kg${diff!==null&&diff!==undefined?`(${Number(diff)>0?'+':''}${diff})`:''}`:'-'}
-function circledNo(n){const nums=['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱'];return nums[Number(n)]||String(n||'-')}
-function horseCircle(e){return `<span class="horse-circle ${frameClass(e.frame_no)}" title="${e.horse_name||e.name||''}">${circledNo(e.horse_no)}</span>`}
-function paceLane(title, rows){return `<div class="pace-lane"><h4>${title}</h4><div class="pace-horses">${(rows||[]).map(horseCircle).join('')||'<span class="muted">-</span>'}</div></div>`}
-function positionBoard(rows){const lanes=[['逃げ',[]],['先行',[]],['差し',[]],['追込',[]]];const map=Object.fromEntries(lanes);for(const r of rows||[]){(map[r.running_style]||map.差し).push(r)}return `<div class="position-board"><h4>ポジション予想</h4><div class="position-track">${lanes.map(([k,v])=>paceLane(k,v)).join('')}</div><p class="muted">通過順の平均と脚質からの自動推定です。実際の隊列はゲート・枠・騎手判断で変わります。</p></div>`}
-function paceBlock(pace){if(!pace)return '';const c=pace.counts||{};const g=pace.groups||{};return `<div class="analysis-box"><h3>展開予想</h3><div class="pace-grid"><span>逃げ <b>${c.逃げ||0}</b></span><span>先行 <b>${c.先行||0}</b></span><span>差し <b>${c.差し||0}</b></span><span>追込 <b>${c.追込||0}</b></span></div><div class="pace-groups">${['逃げ','先行','差し','追込'].map(k=>paceLane(k,g[k]||[])).join('')}</div>${positionBoard(pace.positioned||[])}<p>${pace.comment||''}</p></div>`}
+function paceHorseBadge(e){return `<span class="pace-horse-badge" title="${e.horse_name||e.name||''}">${horseNoBadge(e)}<small>${e.horse_name||e.name||''}</small></span>`}
+function paceLane(title, rows){return `<div class="pace-lane"><h4>${title}<small>${(rows||[]).length}頭</small></h4><div class="pace-horses">${(rows||[]).map(paceHorseBadge).join('')||'<span class="muted">-</span>'}</div></div>`}
+function paceBlock(pace){if(!pace)return '';const c=pace.counts||{};const g=pace.groups||{};return `<div class="analysis-box"><h3>展開予想</h3><div class="pace-grid"><span>逃げ <b>${c.逃げ||0}</b></span><span>先行 <b>${c.先行||0}</b></span><span>差し <b>${c.差し||0}</b></span><span>追込 <b>${c.追込||0}</b></span></div><div class="pace-groups">${['逃げ','先行','差し','追込'].map(k=>paceLane(k,g[k]||[])).join('')}</div><p>${pace.comment||''}</p></div>`}
 function courseRankingBlock(rows){if(!rows?.length)return '';return `<div class="analysis-box"><h3>コース適性ランキング</h3><p class="muted">同条件：1着5点/2着4点/3着3点/4着1点、同距離：1着2点/2〜4着1点、同場所：1〜3着1点</p><div class="table-wrap"><table class="compact"><thead><tr><th>順位</th><th>枠/馬</th><th>馬名</th><th>適性点</th><th>同条件</th><th>同距離</th><th>同場所</th></tr></thead><tbody>${rows.slice(0,8).map(r=>`<tr><td>${r.rank}</td><td>${horseNoBadge(r)}</td><td>${r.horse_name}</td><td><b>${r.point}</b><br><small>${r.same_point}+${r.distance_point}+${r.venue_point}</small></td><td>${r.same_condition}</td><td>${r.same_distance}</td><td>${r.same_venue}</td></tr>`).join('')}</tbody></table></div></div>`}
 function scoreBox(e,score,auto,manual){return `<div class="score-inline"><span class="score-pill ${scoreClass(score)}">総合 ${score}</span><div class="score-split"><span>自動 ${auto}</span><span>手動 ${manual}</span></div></div>`}
-function totalRankingBlock(entries){const rows=[...(entries||[])].sort((a,b)=>Number(b.score||0)-Number(a.score||0)||Number(a.horse_no)-Number(b.horse_no)).slice(0,5);return `<div class="analysis-box"><h3>総合点ランキング</h3><ol class="ranking-list">${rows.map(e=>`<li>${horseCircle(e)} ${e.name} <b>${Number(e.score||0)}</b></li>`).join('')}</ol></div>`}
+function totalRankingBlock(entries){const rows=[...(entries||[])].sort((a,b)=>Number(b.score||0)-Number(a.score||0)||Number(a.horse_no)-Number(b.horse_no)).slice(0,5);return `<div class="analysis-box"><h3>総合点ランキング</h3><ol class="ranking-list">${rows.map(e=>`<li>${horseNoBadge(e)} ${e.name} <b>${Number(e.score||0)}</b></li>`).join('')}</ol></div>`}
 function renderRaceDetail(mode='final'){
  const d=currentRaceDetail;if(!d)return;
  const workoutMap={};for(const w of d.workouts){if(!workoutMap[w.horse_id] || String(w.date||'') > String(workoutMap[w.horse_id].date||'')) workoutMap[w.horse_id]=w;}
