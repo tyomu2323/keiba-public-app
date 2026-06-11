@@ -4,6 +4,16 @@ function pctFlags(percentile) {
   return { top15: percentile <= 0.15 ? 1 : 0, top25: percentile <= 0.25 ? 1 : 0 };
 }
 
+function frameForHorseNo(no, fieldSize=18) {
+  // 18頭立てのJRA枠順に近い配分：1-2/3-4/5-6/7-8/9-10/11-12/13-15/16-18
+  if (fieldSize >= 17) {
+    if (no <= 12) return Math.ceil(no / 2);
+    if (no <= 15) return 7;
+    return 8;
+  }
+  return Math.min(8, Math.ceil(no / 2));
+}
+
 export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
   const today = new Date().toISOString().slice(0,10);
   const venues = [
@@ -37,9 +47,12 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
 
   const horses = [
     ['h001','リバーベッドスター'], ['h002','アクアブレイブ'], ['h003','モスグリーン'], ['h004','フォールライン'],
-    ['h005','バイアスシーカー'], ['h006','オッズハンター'], ['h007','パドックライト'], ['h008','ターフログ']
+    ['h005','バイアスシーカー'], ['h006','オッズハンター'], ['h007','パドックライト'], ['h008','ターフログ'],
+    ['h009','ブルームキャニオン'], ['h010','シルバーリーフ'], ['h011','ノースストリーム'], ['h012','サウスウェーブ'],
+    ['h013','グラスホッパー'], ['h014','ウッドランド'], ['h015','クリアスプリント'], ['h016','ディープフォグ'],
+    ['h017','ロードリバー'], ['h018','アーバンミスト']
   ];
-  const jockeys = ['武豊','川田','ルメール','横山','坂井','戸崎','松山','岩田'];
+  const jockeys = ['武豊','川田','ルメール','横山','坂井','戸崎','松山','岩田','菅原','田辺','西村','鮫島','北村','幸','浜中','三浦','横山武','松若'];
 
   const insertRace = db.prepare(`INSERT OR REPLACE INTO races
     (id,date,venue,race_no,name,surface,distance,course_turn,going,weather,class_name,age_condition,start_time,updated_at)
@@ -77,18 +90,18 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
 
     for (const r of races) {
       const startIndex = (r.race_no + r.venue.length) % horses.length;
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 18; i++) {
         const h = horses[(startIndex + i) % horses.length];
         const horseNo = i + 1;
         const score = 88 - i * 5 + (r.race_no % 3);
         const expectedWinRate = Number((Math.max(3, 24 - i * 2.3)).toFixed(1));
         const theoretical = Number((100 / expectedWinRate).toFixed(1));
         const actual = Number((theoretical * (i % 2 === 0 ? 1.45 : 0.86)).toFixed(1));
-        const sampleWeight = [58,57.5,57,56,55.5,55,54,52][i % 8];
-        insertEntry.run(r.id, h[0], Math.ceil(horseNo/2), horseNo, i % 2 === 0 ? '牡5' : '牝4', sampleWeight, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
-        const finish = ((i + r.race_no) % 8) + 1;
-        const last3fRank = ((i * 2 + r.race_no) % 8) + 1;
-        insertResult.run(r.id, h[0], finish, i+1, actual, Math.ceil(horseNo/2), horseNo, jockeys[i], `${2+i}-${3+i}-${4+i}`, Number((33.8+i/10).toFixed(1)), last3fRank, `1:${33+i}.0`, 93+i, finish===1?'0.0':`${(finish/10).toFixed(1)}`, nowIso());
+        const sampleWeight = [58,57.5,57,56.5,56,55.5,55,54.5,54,53.5,53,52.5,52,51.5,51,50.5,50,49.5][i % 18];
+        insertEntry.run(r.id, h[0], frameForHorseNo(horseNo, 18), horseNo, i % 2 === 0 ? '牡5' : '牝4', sampleWeight, jockeys[i], `j${String(i+1).padStart(3,'0')}`, 'サンプル厩舎', 't001', 480+i*3, i-3, i+1, actual, expectedWinRate, theoretical, score, '出走予定', ['逃げ','先行','差し','追込'][i%4], nowIso());
+        const finish = ((i + r.race_no) % 18) + 1;
+        const last3fRank = ((i * 2 + r.race_no) % 18) + 1;
+        insertResult.run(r.id, h[0], finish, i+1, actual, frameForHorseNo(horseNo, 18), horseNo, jockeys[i], `${2+i}-${3+i}-${4+i}`, Number((33.8+i/10).toFixed(1)), last3fRank, `1:${33+i}.0`, 93+i, finish===1?'0.0':`${(finish/10).toFixed(1)}`, nowIso());
         const isTop = i === 0;
         for (let widx = 0; widx < 3; widx++) {
           const percentile = i === 0 && widx === 0 ? 0.12 : i === 1 && widx === 0 ? 0.22 : 0.38 + i * 0.04 + widx * 0.02;
@@ -100,7 +113,7 @@ export async function fetchData({ mode='manual', dateFrom, dateTo } = {}) {
         }
 
         for (let p = 1; p <= 5; p++) {
-          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山','小倉'][p%4], p===3 ? `G3 過去サンプル${p}` : `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', p===3 ? 'G3' : '1勝C', Math.ceil(horseNo/2), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], [58,57.5,57,56,55.5,55,54,52][i % 8], 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), Math.min(8, i+p), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
+          insertPastRun.run(h[0], `2026-0${Math.max(1, 6-p)}-0${p}`, ['東京','京都','中山','小倉'][p%4], p===3 ? `G3 過去サンプル${p}` : `過去サンプル${p}`, r.surface, r.distance + (p%2 ? 0 : 200), p%2 ? '良' : '稍重', p===3 ? 'G3' : '1勝C', frameForHorseNo(horseNo, 18), horseNo, Math.min(10, i+p), Math.min(12, i+p+1), Number((3.0+i+p).toFixed(1)), jockeys[(i+p)%jockeys.length], [58,57.5,57,56.5,56,55.5,55,54.5,54,53.5,53,52.5,52,51.5,51,50.5,50,49.5][i % 18], 475+i*4, p-2, `${2+p}-${3+p}-${4+p}`, Number((34.0+i/10+p/10).toFixed(1)), Math.min(18, i+p), `1:${33+i}.${p}`, 93+i+p, `${p/10}`, nowIso());
         }
       }
     }

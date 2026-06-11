@@ -182,7 +182,10 @@ function horseBarRow(e){
 }
 function conditionStatsMini(e){const s=e.condition_stats||{};return `<div class="condition-mini"><span>同条件 ${formatRecord(s.same_condition)}</span><span>同距離 ${formatRecord(s.same_distance)}</span><span>同場所 ${formatRecord(s.same_venue)}</span></div>`}
 function bodyWeightText(e){const diff=e.body_weight_diff;return e.body_weight?`${e.body_weight}kg${diff!==null&&diff!==undefined?`(${Number(diff)>0?'+':''}${diff})`:''}`:'-'}
-function paceHorseBadge(e){return `<span class="pace-horse-badge" title="${e.horse_name||e.name||''}">${horseNoBadge(e)}<small>${e.horse_name||e.name||''}</small></span>`}
+function paceHorseBadge(e){
+ const title=e.horse_name||e.name||'';
+ return `<span class="pace-horse-badge pace-number-only" title="${title}"><span class="horse-no pace-horse-no ${frameClass(e.frame_no)}">${e.horse_no||'-'}</span></span>`;
+}
 function paceLane(title, rows){return `<div class="pace-lane"><h4>${title}<small>${(rows||[]).length}頭</small></h4><div class="pace-horses">${(rows||[]).map(paceHorseBadge).join('')||'<span class="muted">-</span>'}</div></div>`}
 function paceBlock(pace){if(!pace)return '';const c=pace.counts||{};const g=pace.groups||{};return `<div class="analysis-box"><h3>展開予想</h3><div class="pace-grid"><span>逃げ <b>${c.逃げ||0}</b></span><span>先行 <b>${c.先行||0}</b></span><span>差し <b>${c.差し||0}</b></span><span>追込 <b>${c.追込||0}</b></span></div><div class="pace-groups">${['逃げ','先行','差し','追込'].map(k=>paceLane(k,g[k]||[])).join('')}</div><p>${pace.comment||''}</p></div>`}
 function courseRankingBlock(rows){if(!rows?.length)return '';return `<div class="analysis-box"><h3>コース適性ランキング</h3><p class="muted">同条件：1着5点/2着4点/3着3点/4着1点、同距離：1着2点/2〜4着1点、同場所：1〜3着1点</p><div class="table-wrap"><table class="compact"><thead><tr><th>順位</th><th>枠/馬</th><th>馬名</th><th>適性点</th><th>同条件</th><th>同距離</th><th>同場所</th></tr></thead><tbody>${rows.slice(0,8).map(r=>`<tr><td>${r.rank}</td><td>${horseNoBadge(r)}</td><td>${r.horse_name}</td><td><b>${r.point}</b><br><small>${r.same_point}+${r.distance_point}+${r.venue_point}</small></td><td>${r.same_condition}</td><td>${r.same_distance}</td><td>${r.same_venue}</td></tr>`).join('')}</tbody></table></div></div>`}
